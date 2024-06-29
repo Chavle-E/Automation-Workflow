@@ -44,4 +44,6 @@ steps:
 options:
   logging: CLOUD_LOGGING_ONLY
 
+logsBucket: gs://thirstysprout_build_logs
+
 timeout: 1600s
