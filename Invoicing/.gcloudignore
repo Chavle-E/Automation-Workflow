@@ -1,8 +1,0 @@
-# This file specifies files and directories that will not be uploaded to Google Cloud Functions.
-
-# Python virtual environments
-venv
-__pycache__
-*.pyc
-.DS_Store
-.env
