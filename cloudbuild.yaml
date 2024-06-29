@@ -28,4 +28,25 @@ steps:
           --entry-point create_invoice \
           --source=Invoicing
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sd
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
+        HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
+        HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
+        gcloud functions deploy process_payroll \
+          --region europe-west10 \
+          --runtime python39 \
+          --trigger-topic process-payroll-topic \
+          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
+          --entry-point process_payroll \
+          --source=Payroll
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  logsBucket: gs://thirstysprout_automation_build_logs
+  serviceAccount: cloud-build-sa@charged-sector-427921-v5.iam.gserviceaccount.com
+
+timeout: 1600s
