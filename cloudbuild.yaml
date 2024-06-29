@@ -41,4 +41,7 @@ steps:
           --entry-point process_payroll \
           --source=Payroll
 
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 timeout: 1600s
