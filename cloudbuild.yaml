@@ -6,6 +6,7 @@ steps:
       - |
         SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
         gcloud functions deploy post_message_to_slack \
+          --region europe-west10 \
           --runtime python39 \
           --trigger-topic post-message-topic \
           --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN \
@@ -20,30 +21,11 @@ steps:
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
         gcloud functions deploy create_invoice \
+          --region europe-west10 \
           --runtime python39 \
           --trigger-topic create-invoice-topic \
           --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
           --entry-point create_invoice \
           --source=Invoicing
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
-        HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
-        HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
-        gcloud functions deploy process_payroll \
-          --runtime python39 \
-          --trigger-topic process-payroll-topic \
-          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
-          --entry-point process_payroll \
-          --source=Payroll
-
-options:
-  logging: CLOUD_LOGGING_ONLY
-
-logsBucket: gs://thirstysprout_build_logs
-
-timeout: 1600s
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sd
