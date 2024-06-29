@@ -1,0 +1,44 @@
+steps:
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud functions deploy post_message_to_slack \
+          --runtime python39 \
+          --trigger-topic post-message-topic \
+          --set-env-vars SLACK_TOKEN=${_SLACK_TOKEN} \
+          --entry-point post_message_to_slack \
+          --source=Announcements
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud functions deploy create_invoice \
+          --runtime python39 \
+          --trigger-topic create-invoice-topic \
+          --set-env-vars HARVEST_API_KEY=${_HARVEST_API_KEY},HARVEST_ACC_ID=${_HARVEST_ACC_ID} \
+          --entry-point create_invoice \
+          --source=Invoicing
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud functions deploy process_payroll \
+          --runtime python39 \
+          --trigger-topic process-payroll-topic \
+          --set-env-vars DEEL_API_KEY=${_DEEL_API_KEY},HARVEST_API_KEY=${_HARVEST_API_KEY},HARVEST_ACC_ID=${_HARVEST_ACC_ID} \
+          --entry-point process_payroll \
+          --source=Payroll
+
+substitutions:
+  _SLACK_TOKEN: 'your-slack-token'
+  _HARVEST_API_KEY: 'your-harvest-api-key'
+  _HARVEST_ACC_ID: 'your-harvest-acc-id'
+  _DEEL_API_KEY: 'your-deel-api-key'
+
+timeout: 1600s
