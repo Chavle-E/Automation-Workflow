@@ -46,7 +46,6 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-  logsBucket: gs://thirstysprout_automation_build_logs
   serviceAccount: cloud-build-sa@charged-sector-427921-v5.iam.gserviceaccount.com
 
 timeout: 1600s
