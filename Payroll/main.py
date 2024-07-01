@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 # Fetch API keys and IDs from environment variables
 DEEL_API_KEY = os.getenv('DEEL_API_KEY')
 HARVEST_API_KEY = os.getenv('HARVEST_API_KEY')
-HARVEST_ACC_ID = os.getenv('HARVEST_ACC_ID')
+HARVEST_ACC_ID = os.getenv('HARVEST_ACCOUNT_ID')
 
 # Headers for API requests
 headers_deel = {
@@ -25,7 +25,7 @@ headers_deel = {
 }
 
 headers_harvest = {
-    "Harvest-Account-ID": HARVEST_ACC_ID,
+    "Harvest-Account-Id": HARVEST_ACC_ID,
     'Authorization': f'Bearer {HARVEST_API_KEY}'
 }
 
@@ -66,24 +66,39 @@ def fetch_harvest_entries(start_date, end_date):
     url_harvest = "https://api.harvestapp.com/v2/time_entries"
     params = {
         "from": start_date.format('YYYY-MM-DD'),
-        "to": end_date.format('YYYY-MM-DD')
+        "to": end_date.format('YYYY-MM-DD'),
+        "per_page": 2000,
+        "page": 1
     }
+    all_entries = []
     try:
-        response_harvest = requests.get(url_harvest, headers=headers_harvest, params=params)
-        response_harvest.raise_for_status()
-        return response_harvest.json()['time_entries']
+        while True:
+            logging.info(f"Fetching Harvest entries with params: {params}")
+            response_harvest = requests.get(url_harvest, headers=headers_harvest, params=params)
+            response_harvest.raise_for_status()
+            data = response_harvest.json()
+            entries = data.get('time_entries', [])
+            if not entries:
+                break
+            all_entries.extend(entries)
+            if len(entries) < params["per_page"]:
+                break
+            params["page"] += 1
+        return all_entries
     except (HTTPError, RequestException) as e:
         logging.error(f"Error fetching Harvest entries: {e}")
+        logging.error(f"Response content: {e.response.content}")
         return []
 
 
 def calculate_time_sum(entries):
-    """Calculate the sum of hours for each person from the time entries."""
+    """Calculate Time Sum"""
     time_sum_by_person = {}
     for entry in entries:
         person_name = entry['user']['name']
         hours = entry['hours']
-        time_sum_by_person[person_name] = time_sum_by_person.get(person_name, 0) + hours
+        time_sum_by_person.setdefault(person_name, 0)
+        time_sum_by_person[person_name] += hours
     return time_sum_by_person
 
 
@@ -115,25 +130,13 @@ def fetch_contracts():
     return all_contracts
 
 
-def find_matching_contracts(time_sum_by_person, contracts):
-    """Find matching contracts and submit timesheets."""
-    for person_name, hours in time_sum_by_person.items():
-        for contract in contracts:
-            similarity_ratio = max(fuzz.token_set_ratio(contract['title'], person_name),
-                                   fuzz.token_set_ratio(person_name, contract['title']))
-            if similarity_ratio > 90:
-                if contract['id'] in ['3j4enzw']:
-                    if contract['status'] == 'in_progress':
-                        submit_timesheet(contract['id'], hours)
-
-
 def submit_timesheet(contract_id, hours):
     """Submit timesheet to Deel API."""
     payload = {
         "data": {
             "contract_id": contract_id,
             "description": "Uploaded",
-            "date_submitted": arrow.now().format('YYYY-MM-DD'),
+            "date_submitted": start_date1.format('YYYY-MM-DD'),
             "quantity": hours
         }
     }
@@ -149,6 +152,18 @@ def submit_timesheet(contract_id, hours):
         logging.info(f"Timesheet submitted for contract {contract_id} with hours {hours}")
     except (HTTPError, RequestException) as e:
         logging.error(f"Error submitting timesheet for contract {contract_id}: {e}")
+
+
+def find_matching_contracts(time_sum_by_person, contracts):
+    """Find matching contracts and submit timesheets."""
+    for person_name, hours in time_sum_by_person.items():
+        for contract in contracts:
+            similarity_ratio = max(fuzz.token_set_ratio(contract['title'], person_name),
+                                   fuzz.token_set_ratio(person_name, contract['title']))
+            if similarity_ratio > 90:
+                if contract['id']:
+                    if contract['status'] == 'in_progress':
+                        submit_timesheet(contract['id'], hours)
 
 
 if __name__ == "__main__":
