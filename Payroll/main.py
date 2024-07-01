@@ -130,13 +130,13 @@ def fetch_contracts():
     return all_contracts
 
 
-def submit_timesheet(contract_id, hours):
+def submit_timesheet(contract_id, hours, date):
     """Submit timesheet to Deel API."""
     payload = {
         "data": {
             "contract_id": contract_id,
             "description": "Uploaded",
-            "date_submitted": start_date1.format('YYYY-MM-DD'),
+            "date_submitted": date.format('YYYY-MM-DD'),
             "quantity": hours
         }
     }
@@ -154,7 +154,7 @@ def submit_timesheet(contract_id, hours):
         logging.error(f"Error submitting timesheet for contract {contract_id}: {e}")
 
 
-def find_matching_contracts(time_sum_by_person, contracts):
+def find_matching_contracts(time_sum_by_person, contracts, date):
     """Find matching contracts and submit timesheets."""
     for person_name, hours in time_sum_by_person.items():
         for contract in contracts:
@@ -163,10 +163,11 @@ def find_matching_contracts(time_sum_by_person, contracts):
             if similarity_ratio > 90:
                 if contract['id']:
                     if contract['status'] == 'in_progress':
-                        submit_timesheet(contract['id'], hours)
+                        submit_timesheet(contract['id'], hours, date)
 
 
-if __name__ == "__main__":
+def proccess_payroll():
+    """Main function to process payment."""
     start_date1, end_date1 = get_previous_semi_month_dates()
     entries = fetch_harvest_entries(start_date1, end_date1)
     if entries:
@@ -174,4 +175,15 @@ if __name__ == "__main__":
         logging.info(time_sum_by_person)
         contracts = fetch_contracts()
         if contracts:
-            find_matching_contracts(time_sum_by_person, contracts)
+            find_matching_contracts(time_sum_by_person, contracts, start_date1)
+
+
+def payroll_trigger(request):
+    """Cloud Function entry point for invoicing."""
+    logging.info("Invoicing workflow triggered.")
+    proccess_payroll()
+    return "Invoicing workflow executed successfully."
+
+
+# if __name__ == "__main__":
+#     proccess_payroll()

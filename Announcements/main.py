@@ -3,6 +3,7 @@ import logging
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 from dotenv import load_dotenv
+from google.cloud import scheduler_v1
 
 # Load environment variables from .env file
 load_dotenv(dotenv_path='../.env')
