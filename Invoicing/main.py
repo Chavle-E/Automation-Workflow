@@ -82,16 +82,15 @@ def check_time_entries_exist(project_id, start_date, end_date):
         return False
 
 
-def create_invoice(event, context):
+def create_invoice(start, end):
     """Function to create invoices in Harvest."""
     invoice_url = "https://api.harvestapp.com/v2/invoices"
     client_ids = get_client_ids()
     project_ids = get_project_ids()
-    start_date, end_date = get_previous_semi_month_dates()
 
     for client_id in client_ids:
         for project_id, associated_client_id in project_ids.items():
-            if associated_client_id == client_id and check_time_entries_exist(project_id, start_date, end_date):
+            if associated_client_id == client_id and check_time_entries_exist(project_id, start, end):
                 if project_id not in [36506766, 34951635, 39801484]:
                     payload = {
                         "client_id": client_id,
@@ -99,8 +98,8 @@ def create_invoice(event, context):
                         "payment_term": "upon receipt",
                         "line_items_import": {
                             "project_ids": [project_id],
-                            "time": {"summary_type": "people", "from": start_date.format("YYYY-MM-DD"),
-                                     "to": end_date.format("YYYY-MM-DD")},
+                            "time": {"summary_type": "people", "from": start.format("YYYY-MM-DD"),
+                                     "to": end.format("YYYY-MM-DD")},
                             "expenses": {"summary_type": "category"}
                         }
                     }
@@ -110,3 +109,8 @@ def create_invoice(event, context):
                         logging.info(f"Invoice created for client {client_id} and project {project_id}")
                     except requests.RequestException as e:
                         logging.error(f"Error creating invoice for client {client_id} and project {project_id}: {e}")
+
+
+if __name__ == "__main__":
+    start_date, end_date = get_previous_semi_month_dates()
+    create_invoice(start_date, end_date)
