@@ -1,9 +1,11 @@
 steps:
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+  - name: 'python:3.9-slim'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        pip install --upgrade pip
+        pip install -r requirements.txt
         SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
         gcloud functions deploy post_message_to_slack \
           --region europe-west1 \
@@ -13,11 +15,13 @@ steps:
           --entry-point post_message_to_slack \
           --source=Announcements
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+  - name: 'python:3.9-slim'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        pip install --upgrade pip
+        pip install -r requirements.txt
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
         gcloud functions deploy create_invoice \
@@ -28,11 +32,13 @@ steps:
           --entry-point create_invoice \
           --source=Invoicing
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+  - name: 'python:3.9-slim'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
+        pip install --upgrade pip
+        pip install -r requirements.txt
         DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
@@ -45,6 +51,4 @@ steps:
           --source=Payroll
 
 options:
-  logging: CLOUD_LOGGING_ONLY
-
-timeout: 1600s
+  logging: CL
