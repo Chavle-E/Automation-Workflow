@@ -27,7 +27,7 @@ steps:
         pip3 install -r Invoicing/requirements.txt
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
-        gcloud functions deploy create_invoice_http \
+        gcloud functions deploy create_invoices_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
