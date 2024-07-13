@@ -1,5 +1,5 @@
 steps:
-  - name: 'python:3.9-slim'
+  - name: 'python:3.11-slim'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -15,7 +15,7 @@ steps:
           --entry-point post_message_to_slack \
           --source=Announcements
 
-  - name: 'python:3.9-slim'
+  - name: 'python:3.11-slim'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -32,7 +32,7 @@ steps:
           --entry-point create_invoice \
           --source=Invoicing
 
-  - name: 'python:3.9-slim'
+  - name: 'python:3.11-slim'
     entrypoint: 'bash'
     args:
       - '-c'
