@@ -51,4 +51,6 @@ steps:
           --source=Payroll
 
 options:
-  logging: CL
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1600s
