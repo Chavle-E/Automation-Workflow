@@ -50,7 +50,7 @@ steps:
           --runtime python311 \
           --trigger-topic process-payroll-topic \
           --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
-          --entry-point process_payroll \
+          --entry-point payroll_trigger \
           --source=Payroll
 
 options:
