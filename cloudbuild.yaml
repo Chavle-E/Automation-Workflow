@@ -11,7 +11,8 @@ steps:
         gcloud functions deploy post_message_to_slack \
           --region europe-west1 \
           --runtime python311 \
-          --trigger-topic post-message-topic \
+          --trigger-http \
+          --allow-unauthenticated \
           --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN \
           --entry-point post_message_to_slack \
           --source=Announcements
@@ -29,7 +30,8 @@ steps:
         gcloud functions deploy create_invoice \
           --region europe-west1 \
           --runtime python311 \
-          --trigger-topic create-invoice-topic \
+          --trigger-http \
+          --allow-unauthenticated \
           --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
           --entry-point create_invoice \
           --source=Invoicing
@@ -48,7 +50,8 @@ steps:
         gcloud functions deploy process_payroll \
           --region europe-west1 \
           --runtime python311 \
-          --trigger-topic process-payroll-topic \
+          --trigger-http \
+          --allow-unauthenticated \
           --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
           --entry-point payroll_trigger \
           --source=Payroll
