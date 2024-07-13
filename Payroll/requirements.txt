@@ -3,3 +3,4 @@ fuzzywuzzy
 google-cloud-scheduler
 google-cloud-functions
 google-cloud-pubsub
+python-dotenv
