@@ -4,3 +4,5 @@ fuzzywuzzy==0.18.0
 python-dotenv==0.19.2
 arrow==1.1.1
 google-cloud-scheduler
+google-cloud-functions
+google-cloud-pubsub

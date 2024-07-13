@@ -25,3 +25,5 @@ def post_message_to_slack(event):
         logging.info(f"Message posted to #announcements: {response['message']['text']}")
     except SlackApiError as e:
         logging.error(f"Error posting message to Slack: {e.response['error']}")
+
+
