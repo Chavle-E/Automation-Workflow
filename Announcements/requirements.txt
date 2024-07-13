@@ -1,0 +1,5 @@
+slack_sdk
+python-dotenv
+google-cloud-scheduler
+google-cloud-functions
+google-cloud-pubsub

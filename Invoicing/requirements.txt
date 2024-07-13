@@ -1,8 +1,6 @@
-slack_sdk
 requests
-fuzzywuzzy
-python-dotenv
 arrow
+python-dotenv
 google-cloud-scheduler
 google-cloud-functions
 google-cloud-pubsub
