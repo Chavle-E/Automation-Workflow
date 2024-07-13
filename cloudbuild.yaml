@@ -1,50 +1,53 @@
 steps:
-  - name: 'python:3.11-slim'
+  - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        pip install --upgrade pip
-        pip install -r Announcements/requirements.txt
+        apt-get update && apt-get install -y python3 python3-pip
+        pip3 install --upgrade pip
+        pip3 install -r Announcements/requirements.txt
         SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
         gcloud functions deploy post_message_to_slack \
           --region europe-west1 \
-          --runtime python39 \
+          --runtime python311 \
           --trigger-topic post-message-topic \
           --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN \
           --entry-point post_message_to_slack \
           --source=Announcements
 
-  - name: 'python:3.11-slim'
+  - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        pip install --upgrade pip
-        pip install -r Invoicing/requirements.txt
+        apt-get update && apt-get install -y python3 python3-pip
+        pip3 install --upgrade pip
+        pip3 install -r Invoicing/requirements.txt
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
         gcloud functions deploy create_invoice \
           --region europe-west1 \
-          --runtime python39 \
+          --runtime python311 \
           --trigger-topic create-invoice-topic \
           --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
           --entry-point create_invoice \
           --source=Invoicing
 
-  - name: 'python:3.11-slim'
+  - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        pip install --upgrade pip
-        pip install -r Payroll/requirements.txt
+        apt-get update && apt-get install -y python3 python3-pip
+        pip3 install --upgrade pip
+        pip3 install -r Payroll/requirements.txt
         DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
         gcloud functions deploy process_payroll \
           --region europe-west1 \
-          --runtime python39 \
+          --runtime python311 \
           --trigger-topic process-payroll-topic \
           --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
           --entry-point process_payroll \
