@@ -17,7 +17,7 @@ SLACK_TOKEN = os.getenv('SLACK_TOKEN')
 slack_client = WebClient(token=SLACK_TOKEN)
 
 
-def post_message_to_slack(event):
+def post_message_to_slack(request):
     """Function to post a message to Slack."""
     message = "<!channel> Hello everyone! Please don't forget to submit your timesheets"
     try:

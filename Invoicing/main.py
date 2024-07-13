@@ -111,7 +111,7 @@ def create_invoice(start, end):
                         logging.error(f"Error creating invoice for client {client_id} and project {project_id}: {e}")
 
 
-def invoicing_trigger(event, context):
+def invoicing_trigger(request):
     """Cloud Function entry point for invoicing."""
     logging.info("Invoicing workflow triggered.")
     start_date, end_date = get_previous_semi_month_dates()

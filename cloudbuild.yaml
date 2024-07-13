@@ -33,7 +33,7 @@ steps:
           --trigger-http \
           --allow-unauthenticated \
           --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
-          --entry-point create_invoice \
+          --entry-point invoicing_trigger \
           --source=Invoicing
 
   - name: 'google/cloud-sdk:slim'
