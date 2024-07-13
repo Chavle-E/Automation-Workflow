@@ -1,8 +1,8 @@
-slack_sdk==3.5.0
-requests==2.25.1
-fuzzywuzzy==0.18.0
-python-dotenv==0.19.2
-arrow==1.1.1
+slack_sdk
+requests
+fuzzywuzzy
+python-dotenv
+arrow
 google-cloud-scheduler
 google-cloud-functions
 google-cloud-pubsub
