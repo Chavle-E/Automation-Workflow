@@ -1,3 +1,4 @@
 slack_sdk
 python-dotenv
-flask
+flask>=1.0,<3.0
+functions-framework==3.0.0
