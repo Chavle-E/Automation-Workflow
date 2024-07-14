@@ -4,7 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="88b82b99-77df-4cb5-a81d-e7246749d709" name="Changes" comment="" />
+    <list default="true" id="88b82b99-77df-4cb5-a81d-e7246749d709" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -37,7 +39,7 @@
     "Python.main (2).executor": "Run",
     "Python.main.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "Merging main",
+    "git-widget-placeholder": "main",
     "last_opened_file_path": "/home/guga-chavle/PycharmProjects/Testing",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -133,7 +135,8 @@
       <workItem from="1719871114606" duration="2463000" />
       <workItem from="1720704240752" duration="720000" />
       <workItem from="1720894877365" duration="40000" />
-      <workItem from="1720898837066" duration="9155000" />
+      <workItem from="1720898837066" duration="10369000" />
+      <workItem from="1720962730684" duration="690000" />
     </task>
     <servers />
   </component>
