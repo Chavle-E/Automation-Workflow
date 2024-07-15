@@ -2,7 +2,6 @@ import os
 import logging
 import requests
 import arrow
-import calendar
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -21,6 +20,15 @@ headers = {
     "Content-Type": "application/json"
 }
 
+# Define special billing preferences
+SPECIAL_BILLING_CLIENTS = {
+    '13363422': {
+        'project_id': [35848992],  # Add specific project IDs for this client if needed
+        'billing_day': 16,
+        'due_date_offset': 5  # Due date is 5 days after billing day
+    }
+}
+
 
 def get_previous_semi_month_dates():
     """Get start and end dates for the previous semi-month period."""
@@ -35,6 +43,14 @@ def get_previous_semi_month_dates():
         start_date = today.replace(day=1)
         end_date = today.replace(day=15)
 
+    return start_date, end_date
+
+
+def get_custom_billing_dates():
+    """Get start and end dates for custom billing period (16th of last month to 15th of this month)."""
+    today = arrow.now()
+    start_date = today.replace(day=16).shift(months=-1)
+    end_date = today.replace(day=15)
     return start_date, end_date
 
 
@@ -82,40 +98,55 @@ def check_time_entries_exist(project_id, start_date, end_date):
         return False
 
 
-def create_invoice(start, end):
+def create_invoice(client_id, project_id, start_date, end_date, due_date):
     """Function to create invoices in Harvest."""
     invoice_url = "https://api.harvestapp.com/v2/invoices"
+    payload = {
+        "client_id": client_id,
+        "notes": "Thank you for choosing ThirstySprout!",
+        "payment_term": "upon receipt",
+        "due_date": due_date.format("YYYY-MM-DD"),
+        "line_items_import": {
+            "project_ids": [project_id],
+            "time": {"summary_type": "people", "from": start_date.format("YYYY-MM-DD"), "to": end_date.format("YYYY-MM-DD")},
+            "expenses": {"summary_type": "category"}
+        }
+    }
+    try:
+        res = requests.post(invoice_url, headers=headers, json=payload)
+        res.raise_for_status()
+        logging.info(f"Invoice created for client {client_id} and project {project_id}")
+    except requests.RequestException as e:
+        logging.error(f"Error creating invoice for client {client_id} and project {project_id}: {e}")
+
+
+def process_invoices():
+    """Main function to process invoices."""
     client_ids = get_client_ids()
     project_ids = get_project_ids()
+    today = arrow.now()
 
     for client_id in client_ids:
-        for project_id, associated_client_id in project_ids.items():
-            if associated_client_id == client_id and check_time_entries_exist(project_id, start, end):
-                if project_id not in [36506766, 34951635, 39801484]:
-                    payload = {
-                        "client_id": client_id,
-                        "notes": "Thank you for choosing ThirstySprout!",
-                        "payment_term": "upon receipt",
-                        "line_items_import": {
-                            "project_ids": [project_id],
-                            "time": {"summary_type": "people", "from": start.format("YYYY-MM-DD"),
-                                     "to": end.format("YYYY-MM-DD")},
-                            "expenses": {"summary_type": "category"}
-                        }
-                    }
-                    try:
-                        res = requests.post(invoice_url, headers=headers, json=payload)
-                        res.raise_for_status()
-                        logging.info(f"Invoice created for client {client_id} and project {project_id}")
-                    except requests.RequestException as e:
-                        logging.error(f"Error creating invoice for client {client_id} and project {project_id}: {e}")
+        special_billing = SPECIAL_BILLING_CLIENTS.get(client_id)
+        if special_billing:
+            if today.day == special_billing['billing_day']:
+                start_date, end_date = get_custom_billing_dates()
+                due_date = today.replace(days=special_billing['due_date_offset'])
+                for project_id in special_billing['project_id']:
+                    if check_time_entries_exist(project_id, start_date, end_date):
+                        create_invoice(client_id, project_id, start_date, end_date, due_date)
+        else:
+            start_date, end_date = get_previous_semi_month_dates()
+            for project_id, associated_client_id in project_ids.items():
+                if associated_client_id == client_id and check_time_entries_exist(project_id, start_date, end_date):
+                    create_invoice(client_id, project_id, start_date, end_date, "upon receipt")
 
 
 def invoicing_trigger(request):
     """Cloud Function entry point for invoicing."""
     logging.info("Invoicing workflow triggered.")
-    start_date, end_date = get_previous_semi_month_dates()
-    create_invoice(start_date, end_date)
+    process_invoices()
+
 
 # if __name__ == "__main__":
 #     invoicing_trigger(None, None)

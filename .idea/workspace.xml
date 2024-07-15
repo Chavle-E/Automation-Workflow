@@ -6,6 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="88b82b99-77df-4cb5-a81d-e7246749d709" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Invoicing/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/Invoicing/main.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -39,7 +40,8 @@
     "Python.main (2).executor": "Run",
     "Python.main.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "main",
+    "SHARE_PROJECT_CONFIGURATION_FILES": "true",
+    "git-widget-placeholder": "custom-billing",
     "last_opened_file_path": "/home/guga-chavle/PycharmProjects/Testing",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -136,7 +138,9 @@
       <workItem from="1720704240752" duration="720000" />
       <workItem from="1720894877365" duration="40000" />
       <workItem from="1720898837066" duration="10369000" />
-      <workItem from="1720962730684" duration="690000" />
+      <workItem from="1720962730684" duration="3813000" />
+      <workItem from="1720975529992" duration="459000" />
+      <workItem from="1721046952842" duration="1717000" />
     </task>
     <servers />
   </component>
