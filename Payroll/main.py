@@ -25,7 +25,7 @@ headers_deel = {
 }
 
 headers_harvest = {
-    "Harvest-Account-Id": HARVEST_ACC_ID,
+    "Harvest-Account-ID": f'{HARVEST_ACC_ID}',
     'Authorization': f'Bearer {HARVEST_API_KEY}'
 }
 
