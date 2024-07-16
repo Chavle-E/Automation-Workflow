@@ -8,7 +8,6 @@ steps:
         pip3 install --upgrade pip
         pip3 install -r Announcements/requirements.txt
         SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
-        echo "SLACK_TOKEN: $SLACK_TOKEN"
         gcloud functions deploy post_message_to_slack_http \
           --region europe-west1 \
           --runtime python311 \
@@ -28,14 +27,12 @@ steps:
         pip3 install -r Invoicing/requirements.txt
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
-        echo "HARVEST_API_KEY: $HARVEST_API_KEY"
-        echo "HARVEST_ACC_ID: $HARVEST_ACC_ID"
         gcloud functions deploy create_invoices_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
+          --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
           --entry-point invoicing_trigger \
           --source=Invoicing
 
@@ -50,15 +47,12 @@ steps:
         DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
-        echo "DEEL_API_KEY: $DEEL_API_KEY"
-        echo "HARVEST_API_KEY: $HARVEST_API_KEY"
-        echo "HARVEST_ACC_ID: $HARVEST_ACC_ID"
         gcloud functions deploy process_payroll_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
+          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
           --entry-point payroll_trigger \
           --source=Payroll
 
