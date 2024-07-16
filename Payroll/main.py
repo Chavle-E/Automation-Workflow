@@ -25,13 +25,14 @@ headers_deel = {
 }
 
 headers_harvest = {
-    'Authorization': f'Bearer {HARVEST_API_KEY}',
-    "Harvest-Account-Id": f"{HARVEST_ACC_ID}"
+    "Harvest-Account-ID": HARVEST_ACC_ID,
+    'Authorization': f'Bearer {HARVEST_API_KEY}'
 }
 
-logging.info(f"DEEL_API_KEY: {'Loaded' if DEEL_API_KEY else 'Not Loaded'}")
-logging.info(f"HARVEST_API_KEY: {'Loaded' if HARVEST_API_KEY else 'Not Loaded'}")
-logging.info(f"HARVEST_ACC_ID: {'Loaded' if HARVEST_ACC_ID else 'Not Loaded'}")
+logging.info(f"DEEL_API_KEY Loaded: {'Yes' if DEEL_API_KEY else 'No'}")
+logging.info(f"HARVEST_API_KEY Loaded: {'Yes' if HARVEST_API_KEY else 'No'}")
+logging.info(f"HARVEST_ACC_ID Loaded: {'Yes' if HARVEST_ACC_ID else 'No'}")
+logging.info(f"HARVEST_ACC_ID Value: {HARVEST_ACC_ID}")
 
 
 def get_previous_semi_month_dates():
