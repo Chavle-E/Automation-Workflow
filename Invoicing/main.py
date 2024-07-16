@@ -98,14 +98,13 @@ def check_time_entries_exist(project_id, start_date, end_date):
         return False
 
 
-def create_invoice(client_id, project_id, start_date, end_date, due_date):
+def create_invoice(client_id, project_id, start_date, end_date, payment_term):
     """Function to create invoices in Harvest."""
     invoice_url = "https://api.harvestapp.com/v2/invoices"
     payload = {
         "client_id": client_id,
         "notes": "Thank you for choosing ThirstySprout!",
-        "payment_term": "upon receipt",
-        "due_date": due_date.format("YYYY-MM-DD"),
+        "payment_term": payment_term,
         "line_items_import": {
             "project_ids": [project_id],
             "time": {"summary_type": "people", "from": start_date.format("YYYY-MM-DD"), "to": end_date.format("YYYY-MM-DD")},
@@ -131,10 +130,10 @@ def process_invoices():
         if special_billing:
             if today.day == special_billing['billing_day']:
                 start_date, end_date = get_custom_billing_dates()
-                due_date = today.replace(day=special_billing['billing_day']).shift(days=special_billing['due_date_offset'])
+                payment_term = f"net {special_billing['due_date_offset']}"
                 for project_id in special_billing['project_id']:
                     if check_time_entries_exist(project_id, start_date, end_date):
-                        create_invoice(client_id, project_id, start_date, end_date, due_date)
+                        create_invoice(client_id, project_id, start_date, end_date, payment_term)
         else:
             start_date, end_date = get_previous_semi_month_dates()
             for project_id, associated_client_id in project_ids.items():
