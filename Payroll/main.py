@@ -36,7 +36,8 @@ logging.info(f"HARVEST_ACC_ID Loaded: {'Yes' if HARVEST_ACC_ID else 'No'}")
 logging.info(f"HARVEST_ACC_ID Value: {HARVEST_ACC_ID}")
 
 if not all([DEEL_API_KEY, HARVEST_API_KEY, HARVEST_ACC_ID]):
-    logging.error(f"Missing environment variables: DEEL_API_KEY: {DEEL_API_KEY}, HARVEST_API_KEY: {HARVEST_API_KEY}, HARVEST_ACC_ID: {HARVEST_ACC_ID}")
+    logging.error(f"Missing environment variables: DEEL_API_KEY: {DEEL_API_KEY}, HARVEST_API_KEY: {HARVEST_API_KEY}, "
+                  f"HARVEST_ACC_ID: {HARVEST_ACC_ID}")
     raise EnvironmentError("One or more environment variables are missing")
 
 
