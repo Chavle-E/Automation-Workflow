@@ -3,6 +3,7 @@ import logging
 import requests
 import arrow
 from dotenv import load_dotenv
+import traceback
 
 # Load environment variables from .env file
 load_dotenv(dotenv_path='../.env')
@@ -147,10 +148,16 @@ def process_invoices():
                         create_invoice(client_id, project_id, start_date, end_date, end_date, "upon receipt")
 
 
-def invoicing_trigger(request):
-    """Cloud Function entry point for invoicing."""
+def invoicing_trigger():
+    """Main function to trigger invoicing workflow."""
     logging.info("Invoicing workflow triggered.")
-    process_invoices()
+    try:
+        process_invoices()
+        return "Invoicing workflow executed successfully."
+    except Exception as e:
+        logging.error(f"An error occurred: {str(e)}")
+        logging.error(traceback.format_exc())
+        return f"An error occurred: {str(e)}"
 
 # if __name__ == "__main__":
 #     invoicing_trigger(None, None)
