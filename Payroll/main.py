@@ -29,6 +29,10 @@ headers_harvest = {
     "Harvest-Account-Id": f"{HARVEST_ACC_ID}"
 }
 
+logging.info(f"DEEL_API_KEY: {'Loaded' if DEEL_API_KEY else 'Not Loaded'}")
+logging.info(f"HARVEST_API_KEY: {'Loaded' if HARVEST_API_KEY else 'Not Loaded'}")
+logging.info(f"HARVEST_ACC_ID: {'Loaded' if HARVEST_ACC_ID else 'Not Loaded'}")
+
 
 def get_previous_semi_month_dates():
     """Get start and end dates for the previous semi-month period."""
