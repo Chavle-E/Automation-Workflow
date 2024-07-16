@@ -26,23 +26,9 @@ headers_deel = {
 
 headers_harvest = {
     "Harvest-Account-ID": f'{HARVEST_ACC_ID}',
-    'Authorization': f'Bearer {HARVEST_API_KEY}'
+    'Authorization': f'Bearer {HARVEST_API_KEY}',
+    "User-Agent": "MyApp (billing@thirstysprout.com)"
 }
-
-
-def get_semi_month_dates():
-    """Get start and end dates for the current semi-month period."""
-    today = arrow.now()
-    _, last_day_of_month = calendar.monthrange(today.year, today.month)
-
-    if today.day <= 15:
-        start = today.replace(day=1)
-        end = today.replace(day=15)
-    else:
-        start = today.replace(day=16)
-        end = today.replace(day=last_day_of_month)
-
-    return start, end
 
 
 def get_previous_semi_month_dates():
@@ -56,7 +42,7 @@ def get_previous_semi_month_dates():
         end_date = first_day_of_current_month.shift(days=-1)
     else:
         start_date = today.replace(day=1)
-        end_date = today.replace(day=15)
+        end_date = today.replace(day(15))
 
     return start_date, end_date
 
@@ -66,11 +52,12 @@ def fetch_harvest_entries(start_date, end_date):
     url_harvest = "https://api.harvestapp.com/v2/time_entries"
     params = {
         "from": start_date.format('YYYY-MM-DD'),
-        "to": end_date.format('YYYY-MM-DD'),
+        "to": end_date.format('YYYY-MM-DD')
     }
     try:
         logging.info(f"Fetching Harvest entries with params: {params}")
         response_harvest = requests.get(url_harvest, headers=headers_harvest, params=params)
+        logging.info(f"Harvest response URL: {response_harvest.url}")
         response_harvest.raise_for_status()
         return response_harvest.json()['time_entries']
     except (HTTPError, RequestException) as e:
