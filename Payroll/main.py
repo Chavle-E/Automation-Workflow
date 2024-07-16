@@ -66,9 +66,7 @@ def fetch_harvest_entries(start_date, end_date):
     url_harvest = "https://api.harvestapp.com/v2/time_entries"
     params = {
         "from": start_date.format('YYYY-MM-DD'),
-        "to": end_date.format('YYYY-MM-DD'),
-        "per_page": 2000,
-        "page": 1
+        "to": end_date.format('YYYY-MM-DD')
     }
     all_entries = []
     try:
