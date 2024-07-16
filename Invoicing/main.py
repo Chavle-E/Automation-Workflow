@@ -136,13 +136,15 @@ def process_invoices():
                     days=special_billing['due_date_offset'])
                 payment_term = "custom"
                 for project_id in special_billing['project_id']:
-                    if check_time_entries_exist(project_id, start_date, end_date):
-                        create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
+                    if project_id not in [36506766, 34951635, 39801484]:
+                        if check_time_entries_exist(project_id, start_date, end_date):
+                            create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
         else:
             start_date, end_date = get_previous_semi_month_dates()
             for project_id, associated_client_id in project_ids.items():
-                if associated_client_id == client_id and check_time_entries_exist(project_id, start_date, end_date):
-                    create_invoice(client_id, project_id, start_date, end_date, "upon receipt")
+                if project_id not in [36506766, 34951635, 39801484]:
+                    if associated_client_id == client_id and check_time_entries_exist(project_id, start_date, end_date):
+                        create_invoice(client_id, project_id, start_date, end_date, end_date, "upon receipt")
 
 
 def invoicing_trigger(request):
