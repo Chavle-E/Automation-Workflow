@@ -25,9 +25,8 @@ headers_deel = {
 }
 
 headers_harvest = {
-    "Harvest-Account-ID": f'{HARVEST_ACC_ID}',
-    'Authorization': f'Bearer {HARVEST_API_KEY}',
-    "User-Agent": "MyApp (billing@thirstysprout.com)"
+    "Harvest-Account-ID": f"{HARVEST_ACC_ID}",
+    'Authorization': f'Bearer {HARVEST_API_KEY}'
 }
 
 
