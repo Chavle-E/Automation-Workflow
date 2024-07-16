@@ -15,7 +15,7 @@ HARVEST_API_KEY = os.getenv('HARVEST_API_KEY')
 HARVEST_ACCOUNT_ID = os.getenv('HARVEST_ACCOUNT_ID')
 
 headers = {
-    'Harvest-Account-ID': HARVEST_ACCOUNT_ID,
+    'Harvest-Account-ID': f'{HARVEST_ACCOUNT_ID}',
     'Authorization': f'Bearer {HARVEST_API_KEY}',
     "Content-Type": "application/json"
 }

@@ -41,7 +41,7 @@
     "Python.main.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
-    "git-widget-placeholder": "custom-billing",
+    "git-widget-placeholder": "main",
     "last_opened_file_path": "/home/guga-chavle/PycharmProjects/Testing",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -140,7 +140,7 @@
       <workItem from="1720898837066" duration="10369000" />
       <workItem from="1720962730684" duration="3813000" />
       <workItem from="1720975529992" duration="459000" />
-      <workItem from="1721046952842" duration="1717000" />
+      <workItem from="1721046952842" duration="2357000" />
     </task>
     <servers />
   </component>
