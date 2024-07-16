@@ -25,8 +25,8 @@ headers_deel = {
 }
 
 headers_harvest = {
-    "Harvest-Account-Id": HARVEST_ACC_ID,
-    'Authorization': f'Bearer {HARVEST_API_KEY}'
+    'Authorization': f'Bearer {HARVEST_API_KEY}',
+    'Harvest-Account-Id': HARVEST_ACC_ID,
 }
 
 logging.info(f"DEEL_API_KEY Loaded: {'Yes' if DEEL_API_KEY else 'No'}")
