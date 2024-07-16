@@ -14,7 +14,7 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars SLACK_TOKEN=$SLACK_TOKEN \
+          --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN \
           --entry-point post_message_to_slack \
           --source=Announcements
 
@@ -35,7 +35,7 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars HARVEST_API_KEY=$HARVEST_API_KEY,HARVEST_ACC_ID=$HARVEST_ACC_ID \
+          --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
           --entry-point invoicing_trigger \
           --source=Invoicing
 
@@ -58,7 +58,7 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars DEEL_API_KEY=$DEEL_API_KEY,HARVEST_API_KEY=$HARVEST_API_KEY,HARVEST_ACC_ID=$HARVEST_ACC_ID \
+          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
           --entry-point payroll_trigger \
           --source=Payroll
 
