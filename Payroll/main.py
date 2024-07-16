@@ -66,7 +66,9 @@ def fetch_harvest_entries(start_date, end_date):
     url_harvest = "https://api.harvestapp.com/v2/time_entries"
     params = {
         "from": start_date.format('YYYY-MM-DD'),
-        "to": end_date.format('YYYY-MM-DD')
+        "to": end_date.format('YYYY-MM-DD'),
+        "per_page": 2000,
+        "page": 1
     }
     try:
         logging.info(f"Fetching Harvest entries with params: {params}")
@@ -156,7 +158,7 @@ def find_matching_contracts(time_sum_by_person, contracts, date):
                         submit_timesheet(contract['id'], hours, date)
 
 
-def proccess_payroll():
+def process_payroll():
     """Main function to process payment."""
     start_date1, end_date1 = get_previous_semi_month_dates()
     entries = fetch_harvest_entries(start_date1, end_date1)
@@ -169,11 +171,11 @@ def proccess_payroll():
 
 
 def payroll_trigger(request):
-    """Cloud Function entry point for invoicing."""
-    logging.info("Invoicing workflow triggered.")
-    proccess_payroll()
-    return "Invoicing workflow executed successfully."
+    """Cloud Function entry point for payroll."""
+    logging.info("Payroll workflow triggered.")
+    process_payroll()
+    return "Payroll workflow executed successfully."
 
 
 # if __name__ == "__main__":
-#     proccess_payroll()
+#     process_payroll()
