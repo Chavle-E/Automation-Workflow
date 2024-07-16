@@ -67,8 +67,6 @@ def fetch_harvest_entries(start_date, end_date):
     params = {
         "from": start_date.format('YYYY-MM-DD'),
         "to": end_date.format('YYYY-MM-DD'),
-        "per_page": 2000,
-        "page": 1
     }
     try:
         logging.info(f"Fetching Harvest entries with params: {params}")
