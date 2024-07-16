@@ -29,7 +29,6 @@ headers_harvest = {
     'Authorization': f'Bearer {HARVEST_API_KEY}'
 }
 
-
 def get_previous_semi_month_dates():
     """Get start and end dates for the previous semi-month period."""
     today = arrow.now()
@@ -44,7 +43,6 @@ def get_previous_semi_month_dates():
         end_date = today.replace(day=15)
 
     return start_date, end_date
-
 
 def fetch_harvest_entries(start_date, end_date):
     """Fetch time entries from Harvest API within the specified date range."""
@@ -66,7 +64,6 @@ def fetch_harvest_entries(start_date, end_date):
             logging.error(f"Response content: {e.response.content}")
         return []
 
-
 def calculate_time_sum(entries):
     """Calculate Time Sum"""
     time_sum_by_person = {}
@@ -76,7 +73,6 @@ def calculate_time_sum(entries):
         time_sum_by_person.setdefault(person_name, 0)
         time_sum_by_person[person_name] += hours
     return time_sum_by_person
-
 
 def fetch_contracts():
     """Fetch contracts from Deel API."""
@@ -105,7 +101,6 @@ def fetch_contracts():
 
     return all_contracts
 
-
 def submit_timesheet(contract_id, hours, date):
     """Submit timesheet to Deel API."""
     payload = {
@@ -129,7 +124,6 @@ def submit_timesheet(contract_id, hours, date):
     except (HTTPError, RequestException) as e:
         logging.error(f"Error submitting timesheet for contract {contract_id}: {e}")
 
-
 def find_matching_contracts(time_sum_by_person, contracts, date):
     """Find matching contracts and submit timesheets."""
     for person_name, hours in time_sum_by_person.items():
@@ -140,7 +134,6 @@ def find_matching_contracts(time_sum_by_person, contracts, date):
                 if contract['id']:
                     if contract['status'] == 'in_progress':
                         submit_timesheet(contract['id'], hours, date)
-
 
 def process_payroll():
     """Main function to process payment."""
@@ -153,13 +146,11 @@ def process_payroll():
         if contracts:
             find_matching_contracts(time_sum_by_person, contracts, start_date1)
 
-
 def payroll_trigger(request):
     """Cloud Function entry point for payroll."""
     logging.info("Payroll workflow triggered.")
     process_payroll()
     return "Payroll workflow executed successfully."
-
 
 # if __name__ == "__main__":
 #     process_payroll()
