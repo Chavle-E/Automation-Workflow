@@ -131,7 +131,7 @@ def process_invoices():
         if special_billing:
             if today.day == special_billing['billing_day']:
                 start_date, end_date = get_custom_billing_dates()
-                due_date = today.replace(days=special_billing['due_date_offset'])
+                due_date = today.replace(day=special_billing['billing_day']).shift(days=special_billing['due_date_offset'])
                 for project_id in special_billing['project_id']:
                     if check_time_entries_exist(project_id, start_date, end_date):
                         create_invoice(client_id, project_id, start_date, end_date, due_date)
