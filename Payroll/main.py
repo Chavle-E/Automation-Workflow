@@ -68,24 +68,16 @@ def fetch_harvest_entries(start_date, end_date):
         "from": start_date.format('YYYY-MM-DD'),
         "to": end_date.format('YYYY-MM-DD')
     }
-    all_entries = []
     try:
-        while True:
-            logging.info(f"Fetching Harvest entries with params: {params}")
-            response_harvest = requests.get(url_harvest, headers=headers_harvest, params=params)
-            response_harvest.raise_for_status()
-            data = response_harvest.json()
-            entries = data.get('time_entries', [])
-            if not entries:
-                break
-            all_entries.extend(entries)
-            if len(entries) < params["per_page"]:
-                break
-            params["page"] += 1
-        return all_entries
+        logging.info(f"Fetching Harvest entries with params: {params}")
+        response_harvest = requests.get(url_harvest, headers=headers_harvest, params=params)
+        response_harvest.raise_for_status()
+        return response_harvest.json()['time_entries']
     except (HTTPError, RequestException) as e:
         logging.error(f"Error fetching Harvest entries: {e}")
-        logging.error(f"Response content: {e.response.content}")
+        if hasattr(e, 'response') and e.response is not None:
+            logging.error(f"Response status code: {e.response.status_code}")
+            logging.error(f"Response content: {e.response.content}")
         return []
 
 
