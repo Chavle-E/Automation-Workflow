@@ -42,7 +42,7 @@ def get_previous_semi_month_dates():
         end_date = first_day_of_current_month.shift(days=-1)
     else:
         start_date = today.replace(day=1)
-        end_date = today.replace(day(15))
+        end_date = today.replace(day=15)
 
     return start_date, end_date
 
