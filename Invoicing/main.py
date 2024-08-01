@@ -148,7 +148,7 @@ def process_invoices():
                         create_invoice(client_id, project_id, start_date, end_date, end_date, "upon receipt")
 
 
-def invoicing_trigger():
+def invoicing_trigger(request):
     """Main function to trigger invoicing workflow."""
     logging.info("Invoicing workflow triggered.")
     try:
