@@ -36,6 +36,16 @@ SPECIAL_BILLING_CLIENTS = {
 }
 
 
+def get_special_billing_dates(billing_day):
+    """Get start and end dates for the custom billing period (16th of last month to 15th of this month)."""
+    today = arrow.now()
+    if today.day != billing_day:
+        return None, None
+    start_date = today.replace(day=billing_day).shift(months=-1)
+    end_date = today.replace(day=billing_day).shift(days=-1)
+    return start_date, end_date
+
+
 def get_previous_semi_month_dates():
     """Get start and end dates for the previous semi-month period."""
     today = arrow.now()
@@ -49,14 +59,6 @@ def get_previous_semi_month_dates():
         start_date = today.replace(day=1)
         end_date = today.replace(day=15)
 
-    return start_date, end_date
-
-
-def get_custom_billing_dates():
-    """Get start and end dates for custom billing period (16th of last month to 15th of this month)."""
-    today = arrow.now()
-    start_date = today.replace(day=16).shift(months=-1)
-    end_date = today.replace(day=15)
     return start_date, end_date
 
 
@@ -136,15 +138,17 @@ def process_invoices():
     for client_id in client_ids:
         special_billing = SPECIAL_BILLING_CLIENTS.get(client_id)
         if special_billing:
-            if today.day == special_billing['billing_day']:
-                start_date, end_date = get_custom_billing_dates()
-                due_date = today.replace(day=special_billing['billing_day']).shift(
-                    days=special_billing['due_date_offset'])
-                payment_term = "custom"
-                for project_id in special_billing['project_id']:
-                    if project_id not in [36506766, 34951635, 39801484]:
-                        if check_time_entries_exist(project_id, start_date, end_date):
-                            create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
+            start_date, end_date = get_special_billing_dates(special_billing['billing_day'])
+            if not start_date or not end_date:
+                logging.info(f"Skipping special billing client {client_id} because today is not their billing day")
+                continue
+            logging.info(f"Processing special billing for client {client_id} from {start_date} to {end_date}")
+            due_date = today.replace(day=special_billing['billing_day']).shift(days=special_billing['due_date_offset'])
+            payment_term = "custom"
+            for project_id in special_billing['project_id']:
+                if project_id not in [36506766, 34951635, 39801484]:
+                    if check_time_entries_exist(project_id, start_date, end_date):
+                        create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
         else:
             start_date, end_date = get_previous_semi_month_dates()
             for project_id, associated_client_id in project_ids.items():
