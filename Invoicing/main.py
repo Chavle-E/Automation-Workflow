@@ -15,8 +15,13 @@ logging.basicConfig(level=logging.INFO)
 HARVEST_API_KEY = os.getenv('HARVEST_API_KEY')
 HARVEST_ACCOUNT_ID = os.getenv('HARVEST_ACCOUNT_ID')
 
+# Check if the environment variables are loaded correctly
+if not HARVEST_API_KEY or not HARVEST_ACCOUNT_ID:
+    logging.error("Missing HARVEST_API_KEY or HARVEST_ACCOUNT_ID environment variables")
+    raise ValueError("Missing HARVEST_API_KEY or HARVEST_ACCOUNT_ID environment variables")
+
 headers = {
-    'Harvest-Account-ID': f'{HARVEST_ACCOUNT_ID}',
+    'Harvest-Account-ID': HARVEST_ACCOUNT_ID,
     'Authorization': f'Bearer {HARVEST_API_KEY}',
     "Content-Type": "application/json"
 }
@@ -83,7 +88,7 @@ def get_project_ids():
 
 def check_time_entries_exist(project_id, start_date, end_date):
     """Check if there are time entries for a project within the specified date range."""
-    url = f"https://api.harvestapp.com/v2/time_entries"
+    url = "https://api.harvestapp.com/v2/time_entries"
     params = {
         "project_id": project_id,
         "from": start_date.format("YYYY-MM-DD"),
@@ -158,6 +163,3 @@ def invoicing_trigger(request):
         logging.error(f"An error occurred: {str(e)}")
         logging.error(traceback.format_exc())
         return f"An error occurred: {str(e)}"
-
-# if __name__ == "__main__":
-#     invoicing_trigger(None, None)
