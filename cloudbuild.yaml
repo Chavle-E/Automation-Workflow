@@ -15,7 +15,8 @@ steps:
           --allow-unauthenticated \
           --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN \
           --entry-point post_message_to_slack \
-          --source=Announcements
+          --source=Announcements \
+          --service-account your-service-cloud-build-sa@charged-sector-427921-v5.iam.gserviceaccount.com
 
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
@@ -34,7 +35,8 @@ steps:
           --allow-unauthenticated \
           --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
           --entry-point invoicing_trigger \
-          --source=Invoicing
+          --source=Invoicing \
+          --service-account your-service-cloud-build-sa@charged-sector-427921-v5.iam.gserviceaccount.com
 
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
@@ -54,7 +56,8 @@ steps:
           --allow-unauthenticated \
           --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
           --entry-point payroll_trigger \
-          --source=Payroll
+          --source=Payroll \
+          --service-account your-service-cloud-build-sa@charged-sector-427921-v5.iam.gserviceaccount.com
 
 options:
   logging: CLOUD_LOGGING_ONLY
