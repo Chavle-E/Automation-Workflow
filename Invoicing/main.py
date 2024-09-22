@@ -29,35 +29,36 @@ headers = {
 # Define special billing preferences
 SPECIAL_BILLING_CLIENTS = {
     '13363422': {
-        'project_id': [35848992],  # Add specific project IDs for this client if needed
+        'project_ids': [35848992],  # Add specific project IDs for this client
         'billing_day': 16,
         'due_date_offset': 5  # Due date is 5 days after billing day
     }
+    # Add more special billing clients here if needed
 }
 
 
-def get_special_billing_dates(billing_day):
-    """Get start and end dates for the custom billing period (16th of last month to 15th of this month)."""
-    today = arrow.now()
-    start_date = today.replace(day=billing_day).shift(months=-1)  # Start from last month's billing day
-    end_date = today.replace(day=billing_day).shift(days=-1)  # End on current month's billing day minus one day
-    return start_date, end_date
+def get_billing_dates(client_id, today):
+    """Get start and end dates based on client billing preference."""
+    special_billing = SPECIAL_BILLING_CLIENTS.get(str(client_id))
 
-
-def get_previous_semi_month_dates():
-    """Get start and end dates for the previous semi-month period."""
-    today = arrow.now()
-    first_day_of_current_month = today.replace(day=1)
-
-    if today.day <= 15:
-        last_day_of_previous_month = first_day_of_current_month.shift(days=-1)
-        start_date = last_day_of_previous_month.replace(day=16)
-        end_date = first_day_of_current_month.shift(days=-1)
+    if special_billing:
+        billing_day = special_billing['billing_day']
+        if today.day < billing_day:
+            start_date = today.replace(day=billing_day).shift(months=-1)
+            end_date = today.replace(day=billing_day).shift(days=-1)
+        else:
+            start_date = today.replace(day=billing_day)
+            end_date = today.replace(day=billing_day).shift(months=1, days=-1)
+        due_date = end_date.shift(days=special_billing['due_date_offset'])
+        return start_date, end_date, due_date, "custom"
     else:
-        start_date = today.replace(day=1)
-        end_date = today.replace(day(15))
-
-    return start_date, end_date
+        if today.day <= 15:
+            start_date = today.replace(day=1)
+            end_date = today.replace(day=15)
+        else:
+            start_date = today.replace(day=16)
+            end_date = today.replace(day=1).shift(months=1, days=-1)
+        return start_date, end_date, end_date, "upon receipt"
 
 
 def get_client_ids():
@@ -134,20 +135,18 @@ def process_invoices():
     today = arrow.now()
 
     for client_id in client_ids:
-        special_billing = SPECIAL_BILLING_CLIENTS.get(client_id)
+        start_date, end_date, due_date, payment_term = get_billing_dates(client_id, today)
+        logging.info(f"Processing billing for client {client_id} from {start_date} to {end_date}")
+
+        special_billing = SPECIAL_BILLING_CLIENTS.get(str(client_id))
         if special_billing:
-            start_date, end_date = get_special_billing_dates(special_billing['billing_day'])
-            logging.info(f"Processing special billing for client {client_id} from {start_date} to {end_date}")
-            due_date = today.replace(day=special_billing['billing_day']).shift(days=special_billing['due_date_offset'])
-            payment_term = "custom"
-            for project_id in special_billing['project_id']:
+            for project_id in special_billing['project_ids']:
                 if check_time_entries_exist(project_id, start_date, end_date):
                     create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
         else:
-            start_date, end_date = get_previous_semi_month_dates()
             for project_id, associated_client_id in project_ids.items():
                 if associated_client_id == client_id and check_time_entries_exist(project_id, start_date, end_date):
-                    create_invoice(client_id, project_id, start_date, end_date, end_date, "upon receipt")
+                    create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
 
 
 def invoicing_trigger(request):
