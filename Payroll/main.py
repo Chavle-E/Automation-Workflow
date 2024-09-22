@@ -79,13 +79,16 @@ def fetch_harvest_entries(start_date, end_date):
 
 
 def calculate_time_sum(entries):
-    """Calculate Time Sum"""
     time_sum_by_person = {}
     for entry in entries:
-        person_name = entry['user']['name']
-        hours = entry['hours']
-        time_sum_by_person.setdefault(person_name, 0)
-        time_sum_by_person[person_name] += hours
+        if entry['user']['id'] == 4972129 and entry['client']['id'] == 14989461:
+            pass
+        else:
+            person_name = entry['user']['name']
+            hours = entry['hours']
+            time_sum_by_person.setdefault(person_name, 0)
+            time_sum_by_person[person_name] += hours
+
     return time_sum_by_person
 
 
