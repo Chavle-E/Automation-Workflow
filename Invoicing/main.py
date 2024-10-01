@@ -52,6 +52,7 @@ def get_billing_dates(client_id, today):
         if today.day <= 15:
             start_date = today.replace(day=1)
             end_date = today.replace(day=15)
+            return start_date, end_date, end_date, "upon receipt"
         else:
             start_date = today.replace(day=16)
             end_date = today.replace(day=1).shift(months=1, days=-1)
