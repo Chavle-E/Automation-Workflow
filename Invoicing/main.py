@@ -43,7 +43,7 @@ def get_billing_dates(client_id, today):
 
     if special_billing:
         billing_day = special_billing['billing_day']
-        if today.day < billing_day:
+        if today.day == billing_day:
             start_date = today.replace(day=billing_day).shift(months=-1)
             end_date = today.replace(day=billing_day).shift(days=-1)
         else:
