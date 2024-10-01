@@ -46,11 +46,8 @@ def get_billing_dates(client_id, today):
         if today.day == billing_day:
             start_date = today.replace(day=billing_day).shift(months=-1)
             end_date = today.replace(day=billing_day).shift(days=-1)
-        else:
-            start_date = today.replace(day=billing_day)
-            end_date = today.replace(day=billing_day).shift(months=1, days=-1)
-        due_date = end_date.shift(days=special_billing['due_date_offset'])
-        return start_date, end_date, due_date, "custom"
+            due_date = end_date.shift(days=special_billing['due_date_offset'])
+            return start_date, end_date, due_date, "custom"
     else:
         if today.day <= 15:
             start_date = today.replace(day=1)

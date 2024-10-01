@@ -144,7 +144,7 @@
       <workItem from="1722537509384" duration="3783000" />
       <workItem from="1723743379348" duration="23000" />
       <workItem from="1725185401313" duration="3513000" />
-      <workItem from="1727802885589" duration="651000" />
+      <workItem from="1727802885589" duration="1790000" />
     </task>
     <servers />
   </component>
@@ -158,6 +158,11 @@
           <url>file://$PROJECT_DIR$/Payroll/main.py</url>
           <line>27</line>
           <option name="timeStamp" value="1" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/Invoicing/main.py</url>
+          <line>48</line>
+          <option name="timeStamp" value="2" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
