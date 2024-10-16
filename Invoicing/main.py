@@ -44,21 +44,27 @@ def get_billing_dates(client_id, today):
     if special_billing:
         billing_day = special_billing['billing_day']
         if today.day == billing_day:
-            start_date = today.replace(day=billing_day).shift(months=-1)
+            end_date = today.shift(days=-1)
+            start_date = end_date.replace(day=billing_day).shift(months=-1)
+            due_date = today.shift(days=special_billing['due_date_offset'])
+        else:
+            # If it's not the billing day, return the previous period
             end_date = today.replace(day=billing_day).shift(days=-1)
+            start_date = end_date.replace(day=billing_day).shift(months=-1)
             due_date = end_date.shift(days=special_billing['due_date_offset'])
-            logging.info(f"Special billing dates for client {client_id}: {start_date} to {end_date}, due {due_date}")
-            return start_date, end_date, due_date, "custom"
+        logging.info(f"Special billing dates for client {client_id}: {start_date} to {end_date}, due {due_date}")
+        return start_date, end_date, due_date, "custom"
     else:
         if today.day <= 15:
-            start_date = today.replace(day=1)
-            end_date = today.replace(day=15)
+            # For the first half of the month, bill for the previous month's second half
+            end_date = today.replace(day=1).shift(days=-1)
+            start_date = end_date.replace(day=16)
         else:
-            start_date = today.replace(day=16)
-            end_date = today.replace(day=1).shift(months=1, days=-1)
+            # For the second half of the month, bill for the current month's first half
+            end_date = today.replace(day=15)
+            start_date = end_date.replace(day=1)
         logging.info(f"Regular billing dates for client {client_id}: {start_date} to {end_date}, due upon receipt")
         return start_date, end_date, end_date, "upon receipt"
-
 
 def get_client_ids():
     """Fetch active client IDs from Harvest API."""
