@@ -66,6 +66,7 @@ def get_billing_dates(client_id, today):
         logging.info(f"Regular billing dates for client {client_id}: {start_date} to {end_date}, due upon receipt")
         return start_date, end_date, end_date, "upon receipt"
 
+
 def get_client_ids():
     """Fetch active client IDs from Harvest API."""
     url = "https://api.harvestapp.com/v2/clients"
@@ -135,8 +136,10 @@ def create_invoice(client_id, project_id, start_date, end_date, due_date, paymen
         res = requests.post(invoice_url, headers=headers, json=payload)
         res.raise_for_status()
         invoice_data = res.json()
-        logging.info(f"Invoice created for client {client_id} and project {project_id}. Invoice ID: {invoice_data.get('id')}")
-        logging.info(f"Invoice details: Total amount: {invoice_data.get('amount')}, Line items: {len(invoice_data.get('line_items', []))}")
+        logging.info(
+            f"Invoice created for client {client_id} and project {project_id}. Invoice ID: {invoice_data.get('id')}")
+        logging.info(
+            f"Invoice details: Total amount: {invoice_data.get('amount')}, Line items: {len(invoice_data.get('line_items', []))}")
     except requests.RequestException as e:
         logging.error(f"Error creating invoice for client {client_id} and project {project_id}: {e}")
         if hasattr(e, 'response') and e.response is not None:
@@ -160,13 +163,17 @@ def process_invoices():
                 if check_time_entries_exist(project_id, start_date, end_date):
                     create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
                 else:
-                    logging.warning(f"No time entries found for special billing client {client_id}, project {project_id}")
+                    logging.warning(
+                        f"No time entries found for special billing client {client_id}, project {project_id}")
         else:
             logging.info(f"Processing regular billing for client {client_id}")
             for project_id, associated_client_id in project_ids.items():
                 if associated_client_id == client_id:
                     if check_time_entries_exist(project_id, start_date, end_date):
-                        create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
+                        if project_id not in [36506766, 34951635, 39801484]:
+                            create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
+                        else:
+                            logging.info(f"Skipping invoice creation for excluded project {project_id}")
                     else:
                         logging.warning(f"No time entries found for client {client_id}, project {project_id}")
 
