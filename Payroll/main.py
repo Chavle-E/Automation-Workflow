@@ -2,16 +2,16 @@ import os
 import requests
 from fuzzywuzzy import fuzz
 import arrow
-import calendar
 import logging
 from requests.exceptions import HTTPError, RequestException
 from dotenv import load_dotenv
+from ratelimit import limits, sleep_and_retry
 
 # Load environment variables from .env file
-load_dotenv(dotenv_path='../.env')
+load_dotenv(dotenv_path='.env')
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Fetch API keys and IDs from environment variables
 DEEL_API_KEY = os.getenv('DEEL_API_KEY')
@@ -29,15 +29,9 @@ headers_harvest = {
     'Authorization': f'Bearer {HARVEST_API_KEY}'
 }
 
-# Log the environment variables to ensure they are loaded
-logging.info(f"DEEL_API_KEY Loaded: {'Yes' if DEEL_API_KEY else 'No'}")
-logging.info(f"HARVEST_API_KEY Loaded: {'Yes' if HARVEST_API_KEY else 'No'}")
-logging.info(f"HARVEST_ACC_ID Loaded: {'Yes' if HARVEST_ACC_ID else 'No'}")
-logging.info(f"HARVEST_ACC_ID Value: {HARVEST_ACC_ID}")
-
+# Validate environment variables
 if not all([DEEL_API_KEY, HARVEST_API_KEY, HARVEST_ACC_ID]):
-    logging.error(f"Missing environment variables: DEEL_API_KEY: {DEEL_API_KEY}, HARVEST_API_KEY: {HARVEST_API_KEY}, "
-                  f"HARVEST_ACC_ID: {HARVEST_ACC_ID}")
+    logging.error("Missing environment variables")
     raise EnvironmentError("One or more environment variables are missing")
 
 
@@ -57,6 +51,8 @@ def get_previous_semi_month_dates():
     return start_date, end_date
 
 
+@sleep_and_retry
+@limits(calls=5, period=1)  # 5 calls per second
 def fetch_harvest_entries(start_date, end_date):
     """Fetch time entries from Harvest API within the specified date range."""
     url_harvest = "https://api.harvestapp.com/v2/time_entries"
@@ -67,7 +63,6 @@ def fetch_harvest_entries(start_date, end_date):
     try:
         logging.info(f"Fetching Harvest entries with params: {params}")
         response_harvest = requests.get(url_harvest, headers=headers_harvest, params=params)
-        logging.info(f"Harvest response URL: {response_harvest.url}")
         response_harvest.raise_for_status()
         return response_harvest.json()['time_entries']
     except (HTTPError, RequestException) as e:
@@ -79,42 +74,34 @@ def fetch_harvest_entries(start_date, end_date):
 
 
 def calculate_time_sum(entries):
+    """Calculate total hours worked by each person."""
     time_sum_by_person = {}
     for entry in entries:
-        if entry['user']['id'] == 4972129 and entry['client']['id'] == 14989461:
-            pass
-        else:
-            person_name = entry['user']['name']
-            hours = entry['hours']
-            time_sum_by_person.setdefault(person_name, 0)
-            time_sum_by_person[person_name] += hours
-
+        person_name = entry['user']['name']
+        hours = entry['hours']
+        time_sum_by_person.setdefault(person_name, 0)
+        time_sum_by_person[person_name] += hours
     return time_sum_by_person
 
 
+@sleep_and_retry
+@limits(calls=5, period=1)  # 5 calls per second
 def fetch_contracts():
-    """
-    Fetch contracts from Deel API, filtering for
-    'pay_as_you_go_time_based' contracts.
-    """
+    """Fetch contracts from Deel API, filtering for 'pay_as_you_go_time_based' contracts."""
     all_contracts = []
     after_cursor = None
     url_deel = 'https://api.letsdeel.com/rest/v2/contracts'
 
     while True:
-        params_deel = {
-            'after_cursor': after_cursor
-        }
+        params_deel = {'after_cursor': after_cursor}
         try:
             response = requests.get(url_deel, headers=headers_deel, params=params_deel)
-            logging.info(f"Deel request URL: {response.url}")
             response.raise_for_status()
             data = response.json()
 
             if 'data' in data:
-                # Filter contracts by type
                 contracts = [contract for contract in data['data']
-                            if contract['type'] == 'pay_as_you_go_time_based']
+                             if contract['type'] == 'pay_as_you_go_time_based']
                 all_contracts.extend(contracts)
 
             if not data['data']:
@@ -131,13 +118,20 @@ def fetch_contracts():
     return all_contracts
 
 
-def submit_timesheet(contract_id, hours, date):
+def get_valid_submission_date(timesheet_date, contract_start):
+    """Return the later date between timesheet_date and contract_start."""
+    return max(timesheet_date, contract_start)
+
+
+@sleep_and_retry
+@limits(calls=5, period=1)  # 5 calls per second
+def submit_timesheet(contract_id, hours, submission_date, contract_start):
     """Submit timesheet to Deel API."""
     payload = {
         "data": {
             "contract_id": contract_id,
             "description": "Uploaded",
-            "date_submitted": date.format('YYYY-MM-DD'),
+            "date_submitted": submission_date.format('YYYY-MM-DD'),
             "quantity": hours
         }
     }
@@ -150,33 +144,55 @@ def submit_timesheet(contract_id, hours, date):
         response = requests.post("https://api.letsdeel.com/rest/v2/timesheets", json=payload,
                                  headers=headers_timesheets)
         response.raise_for_status()
-        logging.info(f"Timesheet submitted for contract {contract_id} with hours {hours}")
+        logging.info(
+            f"Timesheet submitted for contract {contract_id} with hours {hours} for date {submission_date.format('YYYY-MM-DD')}")
     except (HTTPError, RequestException) as e:
-        logging.error(f"Error submitting timesheet for contract {contract_id}: {e}")
+        error_message = e.response.json().get('errors', [{}])[0].get('message', 'Unknown error')
+        logging.error(f"Error submitting timesheet for contract {contract_id}: {error_message}")
 
 
-def find_matching_contracts(time_sum_by_person, contracts, date):
+def find_matching_contracts(time_sum_by_person, contracts, submission_date):
     """Find matching contracts and submit timesheets."""
     for person_name, hours in time_sum_by_person.items():
         for contract in contracts:
-            similarity_ratio = max(fuzz.token_set_ratio(contract['title'], person_name),
-                                   fuzz.token_set_ratio(person_name, contract['title']))
-            if similarity_ratio > 90:
-                if contract['id']:
-                    if contract['status'] == 'in_progress':
-                        submit_timesheet(contract['id'], hours, date)
+            similarity_ratio = max(
+                fuzz.token_set_ratio(contract['title'].lower(), person_name.lower()),
+                fuzz.token_set_ratio(person_name.lower(), contract['title'].lower())
+            )
+            if similarity_ratio > 85 and contract['status'] == 'in_progress':
+                contract_start = arrow.get(contract['created_at'])
+                logging.info(
+                    f"Processing timesheet for {person_name} - Contract ID: {contract['id']}, Hours: {hours}, Submission Date: {submission_date.format('YYYY-MM-DD')}, Contract Start: {contract_start.format('YYYY-MM-DD')}")
+                submit_timesheet(contract['id'], hours, submission_date, contract_start)
 
 
-def process_payroll():
+def process_payroll(dry_run=False):
     """Main function to process payment."""
-    start_date1, end_date1 = get_previous_semi_month_dates()
-    entries = fetch_harvest_entries(start_date1, end_date1)
+    start_date, end_date = get_previous_semi_month_dates()
+    logging.info(f"Processing payroll for period: {start_date.format('YYYY-MM-DD')} to {end_date.format('YYYY-MM-DD')}")
+
+    entries = fetch_harvest_entries(start_date, end_date)
     if entries:
         time_sum_by_person = calculate_time_sum(entries)
-        logging.info(time_sum_by_person)
+        logging.info(f"Time sum by person: {time_sum_by_person}")
+
         contracts = fetch_contracts()
         if contracts:
-            find_matching_contracts(time_sum_by_person, contracts, start_date1)
+            if dry_run:
+                logging.info("Dry run mode: Timesheets will not be submitted")
+                for person, hours in time_sum_by_person.items():
+                    logging.info(
+                        f"Would submit timesheet for {person}: {hours} hours for date {start_date.format('YYYY-MM-DD')}")
+            else:
+                find_matching_contracts(time_sum_by_person, contracts, end_date)
+        else:
+            logging.warning("No contracts fetched from Deel")
+    else:
+        logging.warning("No time entries fetched from Harvest")
+
+
+if __name__ == "__main__":
+    process_payroll(dry_run=False)  # Set to True for a dry run, False to actually submit timesheets
 
 
 def payroll_trigger(request):
@@ -185,5 +201,4 @@ def payroll_trigger(request):
     process_payroll()
     return "Payroll workflow executed successfully."
 
-# if __name__ == "__main__":
-#     process_payroll()
+
