@@ -93,28 +93,39 @@ def calculate_time_sum(entries):
 
 
 def fetch_contracts():
-    """Fetch contracts from Deel API."""
+    """
+    Fetch contracts from Deel API, filtering for
+    'pay_as_you_go_time_based' contracts.
+    """
     all_contracts = []
     after_cursor = None
-    url_deel = 'https://api.letsdeel.com/rest/v1/contracts'
+    url_deel = 'https://api.letsdeel.com/rest/v2/contracts'
 
     while True:
         params_deel = {
-            'types': 'pay_as_you_go_time_based',
             'after_cursor': after_cursor
         }
         try:
             response = requests.get(url_deel, headers=headers_deel, params=params_deel)
+            logging.info(f"Deel request URL: {response.url}")
             response.raise_for_status()
             data = response.json()
+
             if 'data' in data:
-                contracts = data['data']
+                # Filter contracts by type
+                contracts = [contract for contract in data['data']
+                            if contract['type'] == 'pay_as_you_go_time_based']
                 all_contracts.extend(contracts)
+
             if not data['data']:
                 break
             after_cursor = data['page']['cursor']
+
         except (HTTPError, RequestException) as e:
             logging.error(f"Error fetching Deel contracts: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                logging.error(f"Response status code: {e.response.status_code}")
+                logging.error(f"Response content: {e.response.content}")
             break
 
     return all_contracts
@@ -136,7 +147,7 @@ def submit_timesheet(contract_id, hours, date):
         "authorization": f'Bearer {DEEL_API_KEY}'
     }
     try:
-        response = requests.post("https://api.letsdeel.com/rest/v1/timesheets", json=payload,
+        response = requests.post("https://api.letsdeel.com/rest/v2/timesheets", json=payload,
                                  headers=headers_timesheets)
         response.raise_for_status()
         logging.info(f"Timesheet submitted for contract {contract_id} with hours {hours}")

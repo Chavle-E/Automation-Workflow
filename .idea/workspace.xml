@@ -6,7 +6,7 @@
   <component name="ChangeListManager">
     <list default="true" id="88b82b99-77df-4cb5-a81d-e7246749d709" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Invoicing/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/Invoicing/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Payroll/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/Payroll/main.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -42,7 +42,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "SHARE_PROJECT_CONFIGURATION_FILES": "true",
     "git-widget-placeholder": "main",
-    "last_opened_file_path": "/home/guga-chavle/PycharmProjects/Automation-Workflow",
+    "last_opened_file_path": "/home/guga-chavle/PycharmProjects/Testing",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -62,7 +62,7 @@
       <recent name="$PROJECT_DIR$" />
     </key>
   </component>
-  <component name="RunManager" selected="Python.main (2)">
+  <component name="RunManager" selected="Python.main">
     <configuration name="main (1)" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="Automation-Workflow" />
       <option name="ENV_FILES" value="" />
@@ -109,8 +109,32 @@
       <option name="INPUT_FILE" value="" />
       <method v="2" />
     </configuration>
+    <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Automation-Workflow" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/Payroll" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/Payroll/main.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
     <recent_temporary>
       <list>
+        <item itemvalue="Python.main" />
         <item itemvalue="Python.main (2)" />
         <item itemvalue="Python.main (1)" />
       </list>
@@ -144,7 +168,11 @@
       <workItem from="1722537509384" duration="3783000" />
       <workItem from="1723743379348" duration="23000" />
       <workItem from="1725185401313" duration="3513000" />
-      <workItem from="1727802885589" duration="2341000" />
+      <workItem from="1727802885589" duration="2995000" />
+      <workItem from="1727814610353" duration="476000" />
+      <workItem from="1727896494547" duration="15000" />
+      <workItem from="1728409053055" duration="181000" />
+      <workItem from="1729096540775" duration="2208000" />
     </task>
     <servers />
   </component>
@@ -168,8 +196,8 @@
     </breakpoint-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/Automation_Workflow$main.coverage" NAME="main Coverage Results" MODIFIED="1719840667751" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Payroll" />
-    <SUITE FILE_PATH="coverage/Automation_Workflow$main__1_.coverage" NAME="main (1) Coverage Results" MODIFIED="1719840990814" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Announcements" />
     <SUITE FILE_PATH="coverage/Automation_Workflow$main__2_.coverage" NAME="main (2) Coverage Results" MODIFIED="1719841222775" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Invoicing" />
+    <SUITE FILE_PATH="coverage/Automation_Workflow$main.coverage" NAME="main Coverage Results" MODIFIED="1729098510113" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Payroll" />
+    <SUITE FILE_PATH="coverage/Automation_Workflow$main__1_.coverage" NAME="main (1) Coverage Results" MODIFIED="1719840990814" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/Announcements" />
   </component>
 </project>
