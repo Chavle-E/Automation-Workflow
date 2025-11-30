@@ -1,4 +1,5 @@
 steps:
+  # 1. Deploy Slack Announcements (existing)
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
@@ -15,9 +16,9 @@ steps:
           --allow-unauthenticated \
           --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN \
           --entry-point post_message_to_slack \
-          --source=Announcements 
+          --source=Announcements
 
-
+  # 2. Deploy Invoicing (existing)
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
@@ -35,8 +36,9 @@ steps:
           --allow-unauthenticated \
           --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
           --entry-point invoicing_trigger \
-          --source=Invoicing 
+          --source=Invoicing
 
+  # 3. Deploy Payroll (updated with database)
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
@@ -48,14 +50,103 @@ steps:
         DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
+        GCS_BUCKET=$(gcloud secrets versions access latest --secret="gcs-bucket-name")
         gcloud functions deploy process_payroll_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
+          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID,GCS_BUCKET_NAME=$$GCS_BUCKET \
           --entry-point payroll_trigger \
-          --source=Payroll 
+          --source=Payroll \
+          --timeout=540s
+
+  # 4. Deploy Timesheet Reminders (new)
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        apt-get update && apt-get install -y python3 python3-pip
+        pip3 install --upgrade pip
+        pip3 install -r Payroll/requirements.txt
+        SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
+        HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
+        HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
+        gcloud functions deploy send_timesheet_reminders \
+          --region europe-west1 \
+          --runtime python311 \
+          --trigger-http \
+          --allow-unauthenticated \
+          --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
+          --entry-point reminder_trigger \
+          --source=Payroll \
+          --timeout=120s
+
+  # 5. Create Cloud Scheduler jobs
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Get function URLs
+        PAYROLL_URL=$(gcloud functions describe process_payroll_http --region=europe-west1 --format='value(httpsTrigger.url)')
+        REMINDERS_URL=$(gcloud functions describe send_timesheet_reminders --region=europe-west1 --format='value(httpsTrigger.url)')
+        INVOICING_URL=$(gcloud functions describe create_invoices_http --region=europe-west1 --format='value(httpsTrigger.url)')
+        
+        # Schedule 1: Payroll sync - Every 1st and 16th at 9 AM
+        gcloud scheduler jobs create http payroll-sync \
+          --location=europe-west1 \
+          --schedule="0 9 1,16 * *" \
+          --uri=$$PAYROLL_URL \
+          --http-method=POST \
+          --time-zone="Europe/Tbilisi" \
+          --description="Sync Harvest timesheets to Deel" \
+          || gcloud scheduler jobs update http payroll-sync \
+          --location=europe-west1 \
+          --schedule="0 9 1,16 * *" \
+          --uri=$$PAYROLL_URL
+        
+        # Schedule 2: Timesheet reminders - 2 days before each payroll cycle
+        # Mid-month: 14th & 15th (before 16th deadline)
+        gcloud scheduler jobs create http timesheet-reminders-mid \
+          --location=europe-west1 \
+          --schedule="0 10 14,15 * *" \
+          --uri=$$REMINDERS_URL \
+          --http-method=POST \
+          --time-zone="Europe/Tbilisi" \
+          --description="Send timesheet reminders before 16th payroll" \
+          || gcloud scheduler jobs update http timesheet-reminders-mid \
+          --location=europe-west1 \
+          --schedule="0 10 14,15 * *" \
+          --uri=$$REMINDERS_URL
+        
+        # Month-end: 29th & 30th (before 1st deadline)
+        # Note: February will only get 29th (or skip 30th), which is fine
+        gcloud scheduler jobs create http timesheet-reminders-end \
+          --location=europe-west1 \
+          --schedule="0 10 29,30 * *" \
+          --uri=$$REMINDERS_URL \
+          --http-method=POST \
+          --time-zone="Europe/Tbilisi" \
+          --description="Send timesheet reminders before 1st payroll" \
+          || gcloud scheduler jobs update http timesheet-reminders-end \
+          --location=europe-west1 \
+          --schedule="0 10 29,30 * *" \
+          --uri=$$REMINDERS_URL
+        
+        # Schedule 3: Invoicing - 1st and 16th at 10 AM (existing)
+        gcloud scheduler jobs create http create-invoices \
+          --location=europe-west1 \
+          --schedule="0 10 1,16 * *" \
+          --uri=$$INVOICING_URL \
+          --http-method=POST \
+          --time-zone="Europe/Tbilisi" \
+          --description="Create invoices in Harvest" \
+          || gcloud scheduler jobs update http create-invoices \
+          --location=europe-west1 \
+          --schedule="0 10 1,16 * *" \
+          --uri=$$INVOICING_URL
 
 options:
   logging: CLOUD_LOGGING_ONLY
