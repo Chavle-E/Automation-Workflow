@@ -7,25 +7,23 @@ import logging
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv(dotenv_path='.env')
+load_dotenv(dotenv_path='../.env')
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Environment variables
-SLACK_TOKEN = os.getenv('SLACK_TOKEN')
-HARVEST_API_KEY = os.getenv('HARVEST_API_KEY')
-HARVEST_ACC_ID = os.getenv('HARVEST_ACCOUNT_ID')
 
-# Initialize Slack client
-slack = WebClient(token=SLACK_TOKEN)
+def get_env_vars():
+    """Get and validate environment variables."""
+    slack_token = os.getenv('SLACK_TOKEN')
+    harvest_api_key = os.getenv('HARVEST_API_KEY')
+    harvest_acc_id = os.getenv('HARVEST_ACCOUNT_ID')
 
-# Harvest headers
-harvest_headers = {
-    'Harvest-Account-Id': HARVEST_ACC_ID,
-    'Authorization': f'Bearer {HARVEST_API_KEY}',
-    'User-Agent': 'TimesheetReminder (contact@yourcompany.com)'
-}
+    if not all([slack_token, harvest_api_key, harvest_acc_id]):
+        raise EnvironmentError(
+            "Missing required environment variables: SLACK_TOKEN, HARVEST_API_KEY, HARVEST_ACCOUNT_ID")
+
+    return slack_token, harvest_api_key, harvest_acc_id
 
 
 def get_users_with_missing_timesheets(days=7, min_hours=32):
@@ -39,6 +37,14 @@ def get_users_with_missing_timesheets(days=7, min_hours=32):
     Returns:
         List of users with missing timesheets
     """
+    _, harvest_api_key, harvest_acc_id = get_env_vars()
+
+    harvest_headers = {
+        'Harvest-Account-Id': harvest_acc_id,
+        'Authorization': f'Bearer {harvest_api_key}',
+        'User-Agent': 'TimesheetReminder (contact@yourcompany.com)'
+    }
+
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
 
@@ -93,6 +99,9 @@ def find_slack_user(email, name):
     Returns:
         Slack user ID or None
     """
+    slack_token, _, _ = get_env_vars()
+    slack = WebClient(token=slack_token)
+
     # Try email lookup first
     try:
         user_lookup = slack.users_lookupByEmail(email=email)
@@ -133,6 +142,9 @@ def send_slack_dm(user_id, message, hours_logged, hours_expected):
         hours_logged: Hours the user has logged
         hours_expected: Hours they should have logged
     """
+    slack_token, _, _ = get_env_vars()
+    slack = WebClient(token=slack_token)
+
     try:
         slack.chat_postMessage(
             channel=user_id,
@@ -171,7 +183,7 @@ def send_slack_dm(user_id, message, hours_logged, hours_expected):
                         {
                             "type": "button",
                             "text": {"type": "plain_text", "text": "📝 Submit Timesheet"},
-                            "url": "https://yourcompany.harvestapp.com",
+                            "url": "https://thirstysprout.harvestapp.com",
                             "style": "primary"
                         }
                     ]
@@ -244,8 +256,12 @@ def send_reminders(dry_run=False, days=7, min_hours=32):
 def reminder_trigger(request):
     """Cloud Function entry point for timesheet reminders."""
     logging.info("Timesheet reminder workflow triggered.")
-    send_reminders(dry_run=False, days=7, min_hours=32)
-    return "Reminders sent successfully."
+    try:
+        send_reminders(dry_run=False, days=7, min_hours=32)
+        return "Reminders sent successfully."
+    except Exception as e:
+        logging.error(f"Error in reminder workflow: {e}")
+        return f"Error: {str(e)}", 500
 
 
 if __name__ == "__main__":
