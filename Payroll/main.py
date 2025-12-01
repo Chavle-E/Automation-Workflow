@@ -38,10 +38,14 @@ headers_harvest = {
     'User-Agent': 'PayrollSync (contact@yourcompany.com)'
 }
 
-# Validate environment variables
-if not all([DEEL_API_KEY, HARVEST_API_KEY, HARVEST_ACC_ID]):
-    logging.error("Missing environment variables")
-    raise EnvironmentError("One or more environment variables are missing")
+
+# Validate environment variables only when actually processing payroll
+# (not during import for other Cloud Functions in the same directory)
+def validate_env_vars():
+    """Validate that all required environment variables are set."""
+    if not all([DEEL_API_KEY, HARVEST_API_KEY, HARVEST_ACC_ID]):
+        logging.error("Missing environment variables")
+        raise EnvironmentError("One or more environment variables are missing")
 
 
 def get_previous_semi_month_dates():
@@ -158,7 +162,7 @@ def sync_timesheets_to_deel(time_sum_by_user_id, db, deel_client, end_date, auto
                     harvest_email=harvest_user.get('email'),
                     harvest_name=user_name,
                     deel_contract_id=deel_contract_id,
-                    deel_email=contract.get('worker', {}).get('expected_email'),
+                    deel_email=contract.get('worker', {}).get('email') if contract.get('worker') else None,
                     deel_name=contract.get('title'),
                     match_method='external_id_lookup',
                     confidence_score=1.0,
@@ -190,7 +194,8 @@ def sync_timesheets_to_deel(time_sum_by_user_id, db, deel_client, end_date, auto
                         harvest_email=harvest_user.get('email'),
                         harvest_name=user_name,
                         deel_contract_id=deel_contract_id,
-                        deel_email=matched_contract.get('worker', {}).get('expected_email'),
+                        deel_email=matched_contract.get('worker', {}).get('email') if matched_contract.get(
+                            'worker') else None,
                         deel_name=matched_contract.get('title'),
                         match_method='auto_match',
                         confidence_score=match_result.confidence,
@@ -226,6 +231,9 @@ def sync_timesheets_to_deel(time_sum_by_user_id, db, deel_client, end_date, auto
 
 def process_payroll(dry_run=False, use_cloud_storage=None):
     """Main function to process payroll."""
+    # Validate environment variables
+    validate_env_vars()
+
     # Setup database (with Cloud Storage support)
     # For local testing, force use_cloud_storage=False
     if use_cloud_storage is None:
@@ -285,4 +293,4 @@ if __name__ == "__main__":
     process_payroll(dry_run=True, use_cloud_storage=False)
 
     # Uncomment to run for real locally:
-    # process_payroll(dry_run=False)
+    # process_payroll(dry_run=False, use_cloud_storage=False)
