@@ -61,7 +61,7 @@ steps:
           --source=Payroll \
           --timeout=540s
 
-  # 4. Deploy Timesheet Reminders (new)
+# 4. Deploy Timesheet Reminders (new)
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
@@ -69,7 +69,7 @@ steps:
       - |
         apt-get update && apt-get install -y python3 python3-pip
         pip3 install --upgrade pip
-        pip3 install -r Payroll/requirements.txt
+        pip3 install -r Payroll_Reminders/requirements.txt
         SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
         HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
         HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
@@ -81,7 +81,7 @@ steps:
           --no-gen2 \
           --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
           --entry-point reminder_trigger \
-          --source=Payroll \
+          --source=Payroll_Reminders \
           --timeout=120s
 
   # 5. Create Cloud Scheduler jobs
