@@ -289,6 +289,14 @@ def payroll_trigger(request):
 
 
 if __name__ == "__main__":
+    # Import reminder function for Cloud Functions deployment
+    try:
+        from slack_reminders import reminder_trigger
+    except ImportError:
+        # If slack_reminders can't be imported, provide a stub
+        def reminder_trigger(request):
+            return "Reminder function not available", 500
+
     # For local testing, run in dry-run mode (without Cloud Storage)
     process_payroll(dry_run=True, use_cloud_storage=False)
 
