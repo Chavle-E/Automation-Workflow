@@ -78,6 +78,7 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
+          --no-gen2 \
           --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
           --entry-point reminder_trigger \
           --source=Payroll \
