@@ -291,7 +291,7 @@ def payroll_trigger(request):
 if __name__ == "__main__":
     # Import reminder function for Cloud Functions deployment
     try:
-        from slack_reminders import reminder_trigger
+        from Payroll_Reminders.main import reminder_trigger
     except ImportError:
         # If slack_reminders can't be imported, provide a stub
         def reminder_trigger(request):

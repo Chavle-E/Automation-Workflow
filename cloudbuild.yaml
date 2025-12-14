@@ -61,7 +61,7 @@ steps:
           --source=Payroll \
           --timeout=540s
 
-# 4. Deploy Timesheet Reminders (new)
+  # 4. Deploy Timesheet Reminders (new)
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
