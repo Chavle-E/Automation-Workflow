@@ -93,7 +93,7 @@ class UserMatcher:
 
         Args:
             harvest_user: dict with keys: id, email, first_name, last_name
-            deel_contract: dict with keys: id, title (name), worker.expected_email
+            deel_contract: dict with keys: id, title, worker.full_name, worker.email
 
         Returns:
             MatchResult with confidence score and decision
@@ -103,23 +103,41 @@ class UserMatcher:
 
         # Signal 1: Email match (strongest signal)
         harvest_email = self.normalize_email(harvest_user.get('email', ''))
-        deel_email = self.normalize_email(deel_contract.get('worker', {}).get('email', ''))
+
+        # Deel stores email in worker object
+        worker = deel_contract.get('worker') or {}
+        deel_email = self.normalize_email(worker.get('email', ''))
 
         if harvest_email and deel_email and harvest_email == deel_email:
             signals['email_match'] = 1.0
             weights['email_match'] = 5.0  # Very high weight
         else:
             signals['email_match'] = 0.0
-            weights['email_match'] = 1.0  # Lower weight when emails don't match
+            weights['email_match'] = 0.5  # Lower weight when emails don't match (reduced from 1.0)
 
-            # Signal 2: Name similarity
+        # Signal 2: Name similarity
+        # Check BOTH contract title AND worker.full_name (important for "Untitled Contract" cases)
         harvest_name = f"{harvest_user.get('first_name', '')} {harvest_user.get('last_name', '')}"
-        deel_name = deel_contract.get('title', '')
 
-        name_result = self.compute_name_similarity(harvest_name, deel_name)
+        # Get all possible names from Deel contract
+        deel_title = deel_contract.get('title', '')
+        deel_worker_name = worker.get('full_name', '')
+
+        # Compute similarity against both
+        title_result = self.compute_name_similarity(harvest_name, deel_title)
+        worker_result = self.compute_name_similarity(harvest_name, deel_worker_name)
+
+        # Use the BEST name match
+        if worker_result['score'] > title_result['score']:
+            name_result = worker_result
+            signals['matched_against'] = 'worker.full_name'
+        else:
+            name_result = title_result
+            signals['matched_against'] = 'title'
+
         signals['name_similarity'] = name_result['score']
         signals['name_details'] = name_result
-        weights['name_similarity'] = 5.0  # Increase name weight
+        weights['name_similarity'] = 5.0
 
         # Calculate weighted confidence score
         total_weight = sum(weights.values())
@@ -129,7 +147,10 @@ class UserMatcher:
         ) / total_weight
 
         # Make decision based on thresholds
-        if confidence >= self.auto_accept:
+        # SPECIAL CASE: If name matches very closely (95%+), auto-accept even without email
+        if signals['name_similarity'] >= 0.95:
+            decision = 'auto_accept'
+        elif confidence >= self.auto_accept:
             decision = 'auto_accept'
         elif confidence >= self.review_threshold:
             decision = 'needs_review'
