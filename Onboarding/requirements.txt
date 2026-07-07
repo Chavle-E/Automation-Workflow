@@ -1,0 +1,5 @@
+requests
+ratelimit
+python-dotenv
+rapidfuzz>=3.0.0
+google-cloud-firestore>=2.11.0Le,<2.17

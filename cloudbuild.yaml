@@ -108,7 +108,30 @@ steps:
           --source=Payroll \
           --timeout=300s
 
-  # 6. Create Cloud Scheduler jobs
+  # 6. Deploy Onboarding Backfill (NEW - seeds Firestore from Deel, idempotent)
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        apt-get update && apt-get install -y python3 python3-pip
+        pip3 install --upgrade pip
+        # Single source of truth: copy shared modules from Payroll into the
+        # Onboarding source dir so --source=Onboarding packages them.
+        cp Payroll/deel_client.py Payroll/matcher.py Onboarding/
+        pip3 install -r Onboarding/requirements.txt
+        DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
+        gcloud functions deploy backfill_onboarding \
+          --region europe-west1 \
+          --runtime python311 \
+          --trigger-http \
+          --allow-unauthenticated \
+          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY \
+          --entry-point backfill_onboarding \
+          --source=Onboarding \
+          --timeout=540s
+
+  # 7. Create Cloud Scheduler jobs
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
@@ -119,6 +142,7 @@ steps:
         REMINDERS_URL=$(gcloud functions describe send_timesheet_reminders --region=europe-west1 --format='value(httpsTrigger.url)')
         INVOICING_URL=$(gcloud functions describe create_invoices_http --region=europe-west1 --format='value(httpsTrigger.url)')
         MAPPING_SYNC_URL=$(gcloud functions describe sync_user_mappings --region=europe-west1 --format='value(httpsTrigger.url)')
+        BACKFILL_URL=$(gcloud functions describe backfill_onboarding --region=europe-west1 --format='value(httpsTrigger.url)')
         
         # Schedule 1: Payroll sync - Every 1st and 16th at 9 AM
         gcloud scheduler jobs delete payroll-sync --location=europe-west1 --quiet || true
@@ -161,6 +185,17 @@ steps:
           --http-method=POST \
           --time-zone="Europe/Tbilisi" \
           --description="Sync Harvest users to Deel contracts before payroll"
+
+        # Schedule 5: Onboarding backfill - daily reconcile of Firestore from Deel
+        # (idempotent; keeps lifecycle gate + derived emails in sync as people sign)
+        gcloud scheduler jobs delete onboarding-backfill --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http onboarding-backfill \
+          --location=europe-west1 \
+          --schedule="0 7 * * *" \
+          --uri=$$BACKFILL_URL \
+          --http-method=POST \
+          --time-zone="Europe/Tbilisi" \
+          --description="Reconcile onboarding Firestore docs from Deel (idempotent)"
 
 options:
   logging: CLOUD_LOGGING_ONLY
