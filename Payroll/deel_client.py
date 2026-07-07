@@ -54,10 +54,14 @@ class DeelClient:
                 after_cursor = data['page']['cursor']
 
             except requests.exceptions.RequestException as e:
+                # Fail loud: a mid-pagination error must NOT return the pages
+                # gathered so far as if they were the full set — a truncated
+                # list silently masquerading as complete would let callers act
+                # on partial data (skip contracts, mis-sync, under-seed).
                 logging.error(f"Error fetching Deel contracts: {e}")
                 if hasattr(e, 'response') and e.response is not None:
                     logging.error(f"Response: {e.response.content}")
-                break
+                raise
 
         logging.info(f"Fetched {len(all_contracts)} Deel contracts")
         return all_contracts
@@ -92,10 +96,13 @@ class DeelClient:
                     break
                 offset += page_size
             except requests.exceptions.RequestException as e:
+                # Fail loud rather than returning a partial population as if
+                # complete — the backfill must not silently skip hires when a
+                # transient error hits mid-pagination (it retries next run).
                 logging.error(f"Error fetching Deel people: {e}")
                 if hasattr(e, 'response') and e.response is not None:
                     logging.error(f"Response: {e.response.content}")
-                break
+                raise
 
         logging.info(f"Fetched {len(all_people)} Deel people")
         return all_people
