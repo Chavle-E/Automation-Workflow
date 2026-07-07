@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Roster{% endblock %}
+{% block content %}
+
+<section class="cards">
+  <a class="card" href="{{ url_for('roster') }}">
+    <div class="num">{{ summary.total }}</div><div class="lbl">total hires</div>
+  </a>
+  <a class="card {{ 'active' if lifecycle == 'needs_approval' }}" href="{{ url_for('roster', lifecycle='needs_approval') }}">
+    <div class="num">{{ summary.needs_approval }}</div><div class="lbl">needs approval</div>
+  </a>
+  <a class="card {{ 'active' if lifecycle == 'gated' }}" href="{{ url_for('roster', lifecycle='gated') }}">
+    <div class="num">{{ summary.gated }}</div><div class="lbl">gated</div>
+  </a>
+  <a class="card warn {{ 'active' if confidence == 'low' }}" href="{{ url_for('roster', confidence='low') }}">
+    <div class="num">{{ summary.low_confidence }}</div><div class="lbl">low confidence</div>
+  </a>
+  <div class="card muted">
+    <div class="num">{{ summary.back_catalog }}</div><div class="lbl">back-catalog</div>
+  </div>
+</section>
+
+{% if lifecycle or confidence %}
+<p class="filternote">
+  Filtered{% if lifecycle %} · lifecycle=<b>{{ lifecycle }}</b>{% endif %}{% if confidence %} · confidence=<b>{{ confidence }}</b>{% endif %}
+  · <a href="{{ url_for('roster') }}">clear</a>
+</p>
+{% endif %}
+
+<table class="grid">
+  <thead>
+    <tr>
+      <th>Proposed email</th><th>Lifecycle</th><th>Confidence</th>
+      <th>Start date</th><th>Deel</th><th>Source</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for d in rows %}
+    <tr class="{{ 'row-low' if d.name_confidence == 'low' }}">
+      <td class="mono">{{ d.email or '—' }}</td>
+      <td><span class="pill life-{{ d.lifecycle }}">{{ d.lifecycle }}</span></td>
+      <td><span class="pill conf-{{ d.name_confidence }}">{{ d.name_confidence }}</span></td>
+      <td>{{ (d.start_date or '')[:10] or '—' }}</td>
+      <td class="mono small">{{ (d.accounts.deel.status if d.accounts and d.accounts.deel else '') or '—' }}</td>
+      <td>{{ 'back-catalog' if d.backfill_back_catalog else 'new hire' }}</td>
+      <td><a class="view" href="{{ url_for('hire', person_id=d.person_id) }}">view →</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="empty">No records match this filter.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

@@ -70,6 +70,10 @@ class OnboardingStore:
         query = self.client.collection(self.collection).where("lifecycle", "==", lifecycle)
         return [snap.to_dict() for snap in query.stream()]
 
+    def list_all(self) -> List[Dict]:
+        """Every onboarding doc (used by the read-only dashboard)."""
+        return [snap.to_dict() for snap in self.client.collection(self.collection).stream()]
+
     # ---- writes (all transactional) -----------------------------------------
 
     def upsert(self, person_id, *, identity: Dict, initial_lifecycle: str,
