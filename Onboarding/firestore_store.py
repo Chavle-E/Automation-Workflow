@@ -24,6 +24,9 @@ from typing import Dict, List, Optional
 from google.cloud import firestore
 
 COLLECTION = "onboarding"
+# Named Firestore database (NOT the project's `(default)`, which is DATASTORE_MODE
+# and cannot serve Native-mode reads/writes). Created Native in europe-west1.
+DATABASE = "onboarding"
 
 # Fields that backfill derives from Deel (the source of truth) and may safely
 # refresh on every run. lifecycle/accounts/created_at/audit are NOT in here —
@@ -49,8 +52,9 @@ def _empty_accounts() -> Dict:
 
 
 class OnboardingStore:
-    def __init__(self, collection: str = COLLECTION, client: Optional[firestore.Client] = None):
-        self.client = client or firestore.Client()
+    def __init__(self, collection: str = COLLECTION, database: str = DATABASE,
+                 client: Optional[firestore.Client] = None):
+        self.client = client or firestore.Client(database=database)
         self.collection = collection
 
     def _ref(self, person_id):

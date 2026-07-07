@@ -191,8 +191,22 @@ Added as step 6 in `cloudbuild.yaml` (`backfill_onboarding`, secret `deel-api-ke
 plus a daily `onboarding-backfill` Cloud Scheduler job (07:00 Europe/Tbilisi) that
 reconciles Firestore from Deel. Trigger a one-off preview with `?dry_run=1`.
 
-**Prereqs:** Firestore in **Native mode** enabled in the project, and the function's
-runtime service account granted `roles/datastore.user`.
+**Prereqs (one-time, done):** the project's `(default)` database is **Datastore-mode**
+(`eur3`) and cannot serve Native reads, so onboarding uses a **separate named
+Native-mode database `onboarding`** (`europe-west1`). `OnboardingStore` connects to it
+explicitly via `firestore.Client(database="onboarding")`. The gen2 (compute) and gen1
+(appspot) runtime service accounts are granted `roles/datastore.user` (project-level,
+covers all databases).
+
+Recreate elsewhere with:
+```bash
+gcloud services enable firestore.googleapis.com
+gcloud firestore databases create --database=onboarding \
+  --location=europe-west1 --type=firestore-native
+gcloud projects add-iam-policy-binding PROJECT \
+  --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
+  --role="roles/datastore.user"
+```
 
 ## Decisions (confirmed by David)
 
