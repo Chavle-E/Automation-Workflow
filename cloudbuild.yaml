@@ -13,6 +13,7 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
+          --clear-env-vars \
           --set-secrets SLACK_TOKEN=slack-token:latest \
           --entry-point post_message_to_slack \
           --source=Announcements
@@ -31,6 +32,7 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
+          --clear-env-vars \
           --set-secrets HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest \
           --entry-point invoicing_trigger \
           --source=Invoicing
@@ -49,6 +51,7 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
+          --clear-env-vars \
           --set-secrets DEEL_API_KEY=deel-api-key:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,GCS_BUCKET_NAME=gcs-bucket-name:latest \
           --entry-point payroll_trigger \
           --source=Payroll \
@@ -69,6 +72,7 @@ steps:
           --trigger-http \
           --allow-unauthenticated \
           --no-gen2 \
+          --clear-env-vars \
           --set-secrets SLACK_TOKEN=slack-token:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest \
           --entry-point reminder_trigger \
           --source=Payroll_Reminders \
@@ -88,6 +92,7 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
+          --clear-env-vars \
           --set-secrets DEEL_API_KEY=deel-api-key:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,GCS_BUCKET_NAME=gcs-bucket-name:latest,SLACK_TOKEN=slack-token:latest \
           --entry-point mapping_sync_trigger \
           --set-build-env-vars GOOGLE_FUNCTION_SOURCE=sync_mappings.py \
@@ -111,6 +116,7 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
+          --clear-env-vars \
           --set-secrets DEEL_API_KEY=deel-api-key:latest \
           --entry-point backfill_onboarding \
           --source=Onboarding \
