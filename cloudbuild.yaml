@@ -8,13 +8,12 @@ steps:
         apt-get update && apt-get install -y python3 python3-pip
         pip3 install --upgrade pip
         pip3 install -r Announcements/requirements.txt
-        SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
         gcloud functions deploy post_message_to_slack_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN \
+          --set-secrets SLACK_TOKEN=slack-token:latest \
           --entry-point post_message_to_slack \
           --source=Announcements
 
@@ -27,14 +26,12 @@ steps:
         apt-get update && apt-get install -y python3 python3-pip
         pip3 install --upgrade pip
         pip3 install -r Invoicing/requirements.txt
-        HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
-        HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
         gcloud functions deploy create_invoices_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
+          --set-secrets HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest \
           --entry-point invoicing_trigger \
           --source=Invoicing
 
@@ -47,16 +44,12 @@ steps:
         apt-get update && apt-get install -y python3 python3-pip
         pip3 install --upgrade pip
         pip3 install -r Payroll/requirements.txt
-        DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
-        HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
-        HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
-        GCS_BUCKET=$(gcloud secrets versions access latest --secret="gcs-bucket-name")
         gcloud functions deploy process_payroll_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID,GCS_BUCKET_NAME=$$GCS_BUCKET \
+          --set-secrets DEEL_API_KEY=deel-api-key:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,GCS_BUCKET_NAME=gcs-bucket-name:latest \
           --entry-point payroll_trigger \
           --source=Payroll \
           --timeout=540s
@@ -70,16 +63,13 @@ steps:
         apt-get update && apt-get install -y python3 python3-pip
         pip3 install --upgrade pip
         pip3 install -r Payroll_Reminders/requirements.txt
-        SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
-        HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
-        HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
         gcloud functions deploy send_timesheet_reminders \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
           --no-gen2 \
-          --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID \
+          --set-secrets SLACK_TOKEN=slack-token:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest \
           --entry-point reminder_trigger \
           --source=Payroll_Reminders \
           --timeout=120s
@@ -93,17 +83,12 @@ steps:
         apt-get update && apt-get install -y python3 python3-pip
         pip3 install --upgrade pip
         pip3 install -r Payroll/requirements.txt
-        DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
-        HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
-        HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
-        GCS_BUCKET=$(gcloud secrets versions access latest --secret="gcs-bucket-name")
-        SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
         gcloud functions deploy sync_user_mappings \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID,GCS_BUCKET_NAME=$$GCS_BUCKET,SLACK_TOKEN=$$SLACK_TOKEN \
+          --set-secrets DEEL_API_KEY=deel-api-key:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,GCS_BUCKET_NAME=gcs-bucket-name:latest,SLACK_TOKEN=slack-token:latest \
           --entry-point mapping_sync_trigger \
           --set-build-env-vars GOOGLE_FUNCTION_SOURCE=sync_mappings.py \
           --source=Payroll \
@@ -121,13 +106,12 @@ steps:
         # Onboarding source dir so --source=Onboarding packages them.
         cp Payroll/deel_client.py Payroll/matcher.py Onboarding/
         pip3 install -r Onboarding/requirements.txt
-        DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
         gcloud functions deploy backfill_onboarding \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY \
+          --set-secrets DEEL_API_KEY=deel-api-key:latest \
           --entry-point backfill_onboarding \
           --source=Onboarding \
           --timeout=540s
