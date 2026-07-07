@@ -128,12 +128,23 @@ steps:
     args:
       - '-c'
       - |
-        # Get function URLs
-        PAYROLL_URL=$(gcloud functions describe process_payroll_http --region=europe-west1 --format='value(httpsTrigger.url)')
-        REMINDERS_URL=$(gcloud functions describe send_timesheet_reminders --region=europe-west1 --format='value(httpsTrigger.url)')
-        INVOICING_URL=$(gcloud functions describe create_invoices_http --region=europe-west1 --format='value(httpsTrigger.url)')
-        MAPPING_SYNC_URL=$(gcloud functions describe sync_user_mappings --region=europe-west1 --format='value(httpsTrigger.url)')
-        BACKFILL_URL=$(gcloud functions describe backfill_onboarding --region=europe-west1 --format='value(httpsTrigger.url)')
+        # Fail loud on any error so a job that can't be created aborts the build
+        # (previously a mid-step failure was masked because it wasn't the last command).
+        set -e
+
+        # Get function URLs. gen1 exposes the URL at httpsTrigger.url; gen2 (Cloud Run,
+        # e.g. sync_user_mappings) exposes it at .url instead — fetch both, prefer the
+        # non-empty one.
+        geturl() {
+          u=$(gcloud functions describe "$$1" --region=europe-west1 --format='value(httpsTrigger.url)')
+          [ -n "$$u" ] || u=$(gcloud functions describe "$$1" --region=europe-west1 --format='value(url)')
+          echo "$$u"
+        }
+        PAYROLL_URL=$(geturl process_payroll_http)
+        REMINDERS_URL=$(geturl send_timesheet_reminders)
+        INVOICING_URL=$(geturl create_invoices_http)
+        MAPPING_SYNC_URL=$(geturl sync_user_mappings)
+        BACKFILL_URL=$(geturl backfill_onboarding)
 
         # Scheduler auth: the org policy blocks public (allUsers) functions, so every
         # job must invoke its target with an OIDC token. Grant the scheduler SA the
