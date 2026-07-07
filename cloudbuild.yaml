@@ -105,6 +105,7 @@ steps:
           --allow-unauthenticated \
           --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACCOUNT_ID=$$HARVEST_ACC_ID,GCS_BUCKET_NAME=$$GCS_BUCKET,SLACK_TOKEN=$$SLACK_TOKEN \
           --entry-point mapping_sync_trigger \
+          --set-build-env-vars GOOGLE_FUNCTION_SOURCE=sync_mappings.py \
           --source=Payroll \
           --timeout=300s
 
