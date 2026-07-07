@@ -164,3 +164,6 @@ cython_debug/
 # Onboarding: shared modules copied from Payroll at deploy (single source of truth)
 Onboarding/matcher.py
 Onboarding/deel_client.py
+
+# Dashboard: OnboardingStore copied from Onboarding at deploy (single source of truth)
+Dashboard/firestore_store.py

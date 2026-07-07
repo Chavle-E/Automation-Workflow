@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.email or doc.person_id }}{% endblock %}
+{% block content %}
+
+<p class="crumb"><a href="{{ url_for('roster') }}">← roster</a></p>
+
+<div class="detail-head">
+  <h1 class="mono">{{ doc.email or '—' }}</h1>
+  <div>
+    <span class="pill life-{{ doc.lifecycle }}">{{ doc.lifecycle }}</span>
+    <span class="pill conf-{{ doc.name_confidence }}">{{ doc.name_confidence }} confidence</span>
+    {% if doc.backfill_back_catalog %}<span class="pill muted-pill">back-catalog</span>{% endif %}
+  </div>
+</div>
+
+{% if doc.name_confidence == 'low' %}
+<div class="banner">
+  ⚠ Low name confidence — the contract name and personal-details name disagree, so the
+  attached Deel contract may be wrong. Verify before any provisioning.
+</div>
+{% endif %}
+
+<section class="panel">
+  <h2>Identity</h2>
+  <dl class="kv">
+    <dt>person_id</dt><dd class="mono">{{ doc.person_id }}</dd>
+    <dt>personal name</dt><dd>{{ doc.personal_name or '—' }}</dd>
+    <dt>contract name</dt><dd>{{ doc.contract_name or '—' }}</dd>
+    <dt>proposed email</dt><dd class="mono">{{ doc.email or '—' }}</dd>
+    <dt>start date</dt><dd>{{ (doc.start_date or '')[:10] or '—' }}</dd>
+  </dl>
+</section>
+
+<section class="panel">
+  <h2>Accounts</h2>
+  <div class="accounts">
+    {% for name, acct in (doc.accounts or {}).items() %}
+    <div class="acct">
+      <h3>{{ name }}</h3>
+      <dl class="kv">
+        {% for k, v in acct.items() %}
+        <dt>{{ k }}</dt><dd class="{{ 'mono' if v }}">{{ v if v is not none else '—' }}</dd>
+        {% endfor %}
+      </dl>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Audit</h2>
+  <table class="grid">
+    <thead><tr><th>When</th><th>Action</th><th>By</th></tr></thead>
+    <tbody>
+    {% for a in doc.audit or [] %}
+      <tr><td class="mono small">{{ a.at }}</td><td>{{ a.action }}</td><td>{{ a.by }}</td></tr>
+    {% else %}
+      <tr><td colspan="3" class="empty">No audit entries.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="ts">created {{ doc.created_at }} · updated {{ doc.updated_at }}</p>
+</section>
+
+{% endblock %}
