@@ -15,12 +15,15 @@ class DeelClient:
 
     @sleep_and_retry
     @limits(calls=5, period=1)  # 5 calls per second
-    def get_all_contracts(self, contract_type: str = 'pay_as_you_go_time_based') -> List[Dict]:
+    def get_all_contracts(self, contract_type: Optional[str] = 'pay_as_you_go_time_based') -> List[Dict]:
         """
         Fetch all contracts from Deel API with pagination.
 
         Args:
-            contract_type: Filter by contract type (default: pay_as_you_go_time_based)
+            contract_type: Filter by contract type (default: pay_as_you_go_time_based).
+                           Pass None to return contracts of EVERY type (used by
+                           Onboarding, where new hires may be EOR/ongoing_time_based
+                           rather than pay_as_you_go_time_based).
 
         Returns:
             List of all matching contracts
@@ -40,7 +43,7 @@ class DeelClient:
                 if 'data' in data:
                     contracts = [
                         contract for contract in data['data']
-                        if contract['type'] == contract_type
+                        if contract_type is None or contract['type'] == contract_type
                     ]
                     all_contracts.extend(contracts)
 
@@ -58,6 +61,44 @@ class DeelClient:
 
         logging.info(f"Fetched {len(all_contracts)} Deel contracts")
         return all_contracts
+
+    @sleep_and_retry
+    @limits(calls=5, period=1)
+    def get_all_people(self, page_size: int = 100) -> List[Dict]:
+        """
+        Fetch all people from the Deel People API via offset pagination.
+
+        The People API (unlike /contracts) carries the onboarding gate signal
+        (employments[].hiring_status: active | onboarding | onboarding_overdue),
+        the start_date, and the personal-details name. Onboarding joins these to
+        contracts on employment.id == contract.id.
+
+        Returns:
+            List of all people records.
+        """
+        all_people = []
+        offset = 0
+        url = f"{self.base_url}/people"
+
+        while True:
+            params = {"limit": page_size, "offset": offset}
+            try:
+                response = requests.get(url, headers=self.headers, params=params)
+                response.raise_for_status()
+                rows = response.json().get("data", [])
+                all_people.extend(rows)
+
+                if len(rows) < page_size:  # short (last) page — done
+                    break
+                offset += page_size
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Error fetching Deel people: {e}")
+                if hasattr(e, 'response') and e.response is not None:
+                    logging.error(f"Response: {e.response.content}")
+                break
+
+        logging.info(f"Fetched {len(all_people)} Deel people")
+        return all_people
 
     @sleep_and_retry
     @limits(calls=5, period=1)
