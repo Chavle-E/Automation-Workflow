@@ -161,10 +161,13 @@ email, or Slack. To be decided with David.
 
 | File | Purpose |
 |------|---------|
-| `firestore_store.py` | `OnboardingStore`: `get` / `upsert` / `list_by_lifecycle` / `append_audit` |
+| `firestore_store.py` | `OnboardingStore`: `get` / `upsert` / `list_by_lifecycle` / `append_audit` / `request_provision` / `record_account_event` |
 | `naming.py` | `derive_email`, `name_confidence` (reuse `matcher.py`) |
 | `test_naming.py` | unit tests — `python test_naming.py` or `pytest` |
 | `main.py` | `backfill_onboarding` HTTP function + `run_backfill(dry_run=…)` |
+| `provisioning.py` | `provision_onboarding` HTTP function — the approve flow (see below) |
+| `harvest_client.py` | minimal Harvest v2 client: invite contractor, assign project, seat-cap detection |
+| `slack_helpers.py` | workspace invite (API w/ manual fallback) + operator DMs |
 | `onboarding_poll.py`, `onboarding_digest.py` | pre-existing candidate selection + Slack digest |
 
 `deel_client.py` and `matcher.py` live in `Payroll/` (single source of truth) and
@@ -207,6 +210,37 @@ gcloud projects add-iam-policy-binding PROJECT \
   --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
   --role="roles/datastore.user"
 ```
+
+## Provisioning (the approve flow)
+
+Built as the authenticated `provision_onboarding` Cloud Function (cloudbuild step 6b;
+secrets: `slack-token`, `harvest-api-key`, `harvest-acc-id`). It is invoked three ways:
+by the **dashboard** right after an approval or a manual "mark done" (OIDC, compute SA),
+by the **`onboarding-provision-sweep`** scheduler daily at 07:30 Asia/Tbilisi (empty
+POST = retry every doc stuck in `lifecycle=provisioning`), and manually. It also serves
+`GET ?list=projects` — the active Harvest projects for the dashboard's approval form,
+which keeps the dashboard itself secret-free.
+
+Flow per hire, in the playbook order (all steps idempotent, everything audit-logged):
+
+1. **Approve** (dashboard form → `request_provision`): billable rate, optional cost
+   rate, personal email, Harvest project. Guards: only `needs_approval`, never
+   back-catalog. Doc moves to `provisioning`.
+2. **Zoho — notify-a-human** (no API access yet): operators (env
+   `ONBOARDING_NOTIFY_USERS`, comma-separated Slack names) get a DM with the exact
+   playbook steps. Slack/Harvest invites **wait** here, because they target the work
+   email, which only exists once the Zoho user is created. A human then clicks
+   **Mark Zoho created** on the dashboard, which re-invokes the function.
+3. **Slack invite** to the work email: tries the admin invite API, and if the token
+   can't invite (missing scope / plan) falls back to a manual-invite DM +
+   **Mark Slack invited** on the dashboard.
+4. **Harvest**: create the contractor (Contractor, 40 h, Member, default rate = the
+   approval-form billable rate, cost rate optional) and assign to the approved project.
+   **Seat cap**: on Harvest's "no seats" 422 the operators are DMed to add a paid seat
+   (once per block — no spam) and the sweep/Retry picks the hire up after they do.
+
+When all three invites are out the store auto-advances the doc to `not_signed_in`.
+Activation to `active` stays with the (later) activation poller.
 
 ## Decisions (confirmed by David)
 

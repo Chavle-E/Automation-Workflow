@@ -1,24 +1,37 @@
 """
-Onboarding dashboard — a PRIVATE, read-only view of the onboarding Firestore state.
+Onboarding dashboard — a PRIVATE view of the onboarding Firestore state, now with
+the approval flow.
 
-Phase: read-only. Renders the roster and per-hire detail (identity, derived email,
-confidence, lifecycle, account scaffold, audit trail) straight from the `onboarding`
-Native-mode Firestore database that the backfill populates. It performs NO writes and
-exposes NO Deel/secret access — it only reads Firestore. Approve/offboard actions are
-a later phase.
+Reads render the roster and per-hire detail straight from the `onboarding` Native
+Firestore database. Writes are limited to the approval flow and go through
+OnboardingStore's transactional guards:
 
-Privacy: intended to run on Cloud Run behind Identity-Aware Proxy (IAP). IAP injects
-the authenticated user in `X-Goog-Authenticated-User-Email`; when REQUIRE_IAP=1 the app
-refuses any request lacking it (defence in depth so it is never accidentally public).
-Locally (no IAP) leave REQUIRE_IAP unset.
+  - POST /hire/<id>/approve     approval form (billable rate, cost rate, personal
+                                email, Harvest project) -> lifecycle=provisioning,
+                                then invokes the provisioning function.
+  - POST /hire/<id>/mark/<step> record a manual step (Zoho created / Slack or
+                                Harvest invited by hand) and re-invoke provisioning.
+  - POST /hire/<id>/retry       re-invoke provisioning for a stuck hire.
 
-Reuses OnboardingStore (single source of truth for the DB/collection names + doc shape);
-firestore_store.py is copied in at deploy, mirroring the Cloud Functions build.
+The dashboard stays SECRET-FREE: it holds no Deel/Slack/Harvest keys. All tool
+calls live in the `provision_onboarding` Cloud Function (PROVISION_URL), which the
+dashboard invokes with an OIDC identity token minted for its own service account;
+the Harvest-project dropdown is proxied from that function too. If the function
+is unreachable the approval is still safely recorded in Firestore — the daily
+sweep (or the Retry button) picks it up.
+
+Privacy: intended to run on Cloud Run behind IAP (REQUIRE_IAP=1 refuses requests
+missing the IAP header). While the team is on `gcloud run services proxy`, the
+audit identity falls back to the email claim of the caller's own identity token —
+Cloud Run IAM has already verified it upstream.
 """
-import os
+import base64
+import json
 import logging
+import os
 
-from flask import Flask, render_template, abort, request
+import requests
+from flask import Flask, render_template, abort, request, redirect, url_for, flash
 
 # Shared module: copied from ../Onboarding at deploy (single source of truth for the
 # Firestore database + collection). Locally, fall back to the sibling package.
@@ -32,13 +45,23 @@ except ImportError:  # local dev
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 app = Flask(__name__)
+# Sessions are only used for flash messages; a per-instance random key is fine.
+app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.urandom(32)
 
 REQUIRE_IAP = os.getenv("REQUIRE_IAP") in ("1", "true", "yes")
+PROVISION_URL = os.getenv("PROVISION_URL", "")
 
 # Order the roster surfaces lifecycles in: things needing attention first.
 LIFECYCLE_ORDER = ["needs_approval", "gated", "provisioning", "not_signed_in",
                    "active", "offboarding", "offboarded"]
 CONFIDENCE_ORDER = {"low": 0, "medium": 1, "high": 2}
+
+# Manual steps a human may record from the detail page -> (tool, field, audit action).
+MANUAL_STEPS = {
+    "zoho_created": ("zoho", "created_at", "zoho_created_manual"),
+    "slack_invited": ("slack", "invited_at", "slack_invited_manual"),
+    "harvest_invited": ("harvest", "invited_at", "harvest_invited_manual"),
+}
 
 _store = None
 
@@ -52,9 +75,24 @@ def store() -> OnboardingStore:
 
 
 def current_user() -> str:
-    """The IAP-authenticated user, if present (header form: accounts.google.com:email)."""
+    """
+    The authenticated caller, for the audit trail. Prefer the IAP header
+    (accounts.google.com:email); fall back to the email claim of the Bearer
+    identity token that `gcloud run services proxy` forwards — Cloud Run IAM
+    already verified its signature before the request reached us.
+    """
     raw = request.headers.get("X-Goog-Authenticated-User-Email", "")
-    return raw.split(":")[-1] if raw else ""
+    if raw:
+        return raw.split(":")[-1]
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        try:
+            payload = auth.split(".")[1]
+            claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+            return claims.get("email", "")
+        except Exception:
+            pass
+    return ""
 
 
 @app.before_request
@@ -63,8 +101,49 @@ def _enforce_iap():
         abort(403, "This dashboard must be accessed through Identity-Aware Proxy.")
 
 
+# ---- provisioning function client -------------------------------------------
+
+def _id_token(audience: str) -> str:
+    """OIDC token for the provisioning function, minted from our own runtime SA."""
+    from google.oauth2 import id_token as google_id_token
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+    return google_id_token.fetch_id_token(GoogleAuthRequest(), audience)
+
+
+def call_provisioning(params=None, payload=None, timeout=60):
+    """
+    Invoke provision_onboarding. Returns (ok, data-or-error-message). Never raises:
+    the Firestore write has already happened, so a dead function must degrade to
+    'recorded, will be retried', not to a user-facing 500.
+    """
+    if not PROVISION_URL:
+        return False, "PROVISION_URL is not configured"
+    try:
+        headers = {"Authorization": f"Bearer {_id_token(PROVISION_URL)}"}
+        if payload is not None:
+            resp = requests.post(PROVISION_URL, params=params, json=payload,
+                                 headers=headers, timeout=timeout)
+        else:
+            resp = requests.get(PROVISION_URL, params=params, headers=headers, timeout=timeout)
+        body = resp.json() if resp.headers.get("Content-Type", "").startswith("application/json") else {}
+        if resp.status_code != 200:
+            return False, body.get("error", f"HTTP {resp.status_code}")
+        return True, body
+    except Exception as e:
+        logging.warning(f"provisioning function unreachable: {e}")
+        return False, str(e)
+
+
+def harvest_projects():
+    """Active Harvest projects for the approve form (proxied; [] if unreachable)."""
+    ok, data = call_provisioning(params={"list": "projects"}, timeout=30)
+    return data.get("projects", []) if ok else []
+
+
+# ---- read views ---------------------------------------------------------------
+
 def _summary(docs):
-    s = {"total": len(docs), "gated": 0, "needs_approval": 0,
+    s = {"total": len(docs), "gated": 0, "needs_approval": 0, "provisioning": 0,
          "low_confidence": 0, "back_catalog": 0}
     for d in docs:
         life = d.get("lifecycle")
@@ -113,7 +192,99 @@ def hire(person_id):
     doc = store().get(person_id)
     if not doc:
         abort(404, f"No onboarding record for {person_id}")
-    return render_template("detail.html", doc=doc, user=current_user())
+    approvable = doc.get("lifecycle") == "needs_approval" and not doc.get("backfill_back_catalog")
+    return render_template(
+        "detail.html",
+        doc=doc,
+        user=current_user(),
+        approvable=approvable,
+        projects=harvest_projects() if approvable else [],
+        manual_steps=MANUAL_STEPS,
+    )
+
+
+# ---- approval flow (writes) ----------------------------------------------------
+
+@app.route("/hire/<person_id>/approve", methods=["POST"])
+def approve(person_id):
+    form = request.form
+    errors = []
+    try:
+        billable_rate = float(form.get("billable_rate", ""))
+        if billable_rate <= 0:
+            errors.append("billable rate must be > 0")
+    except ValueError:
+        billable_rate = None
+        errors.append("billable rate is required (a number)")
+
+    cost_rate = None
+    if form.get("cost_rate", "").strip():
+        try:
+            cost_rate = float(form["cost_rate"])
+        except ValueError:
+            errors.append("cost rate must be a number")
+
+    personal_email = form.get("personal_email", "").strip()
+    if "@" not in personal_email:
+        errors.append("personal email is required (Zoho credentials are sent there)")
+
+    project_id = form.get("harvest_project_id", "").strip()
+    if not project_id:
+        errors.append("a Harvest project is required")
+
+    if errors:
+        flash("Not approved: " + "; ".join(errors), "error")
+        return redirect(url_for("hire", person_id=person_id))
+
+    by = current_user() or "unknown"
+    try:
+        store().request_provision(
+            person_id, by=by, billable_rate=billable_rate, cost_rate=cost_rate,
+            personal_email=personal_email, harvest_project_id=project_id,
+            harvest_project_name=form.get("harvest_project_name", ""),
+        )
+    except (ValueError, KeyError) as e:
+        flash(f"Not approved: {e}", "error")
+        return redirect(url_for("hire", person_id=person_id))
+
+    ok, data = call_provisioning(payload={"person_id": person_id})
+    if ok:
+        flash("Approved — provisioning started (Zoho instructions sent to the operators).", "ok")
+    else:
+        flash(f"Approved and recorded; provisioning function not reached ({data}) — "
+              "use Retry or wait for the daily sweep.", "warn")
+    return redirect(url_for("hire", person_id=person_id))
+
+
+@app.route("/hire/<person_id>/mark/<step>", methods=["POST"])
+def mark_step(person_id, step):
+    if step not in MANUAL_STEPS:
+        abort(404)
+    tool, field, action = MANUAL_STEPS[step]
+    by = current_user() or "unknown"
+    from firestore_store import _now
+    try:
+        store().record_account_event(person_id, tool, {field: _now()}, action=action, by=by)
+    except KeyError as e:
+        flash(str(e), "error")
+        return redirect(url_for("hire", person_id=person_id))
+    # A newly created Zoho user unblocks the Slack/Harvest invites — run them now.
+    ok, _data = call_provisioning(payload={"person_id": person_id})
+    flash(f"Recorded {step.replace('_', ' ')}." +
+          ("" if ok else " (Provisioning function not reached — Retry later.)"),
+          "ok" if ok else "warn")
+    return redirect(url_for("hire", person_id=person_id))
+
+
+@app.route("/hire/<person_id>/retry", methods=["POST"])
+def retry(person_id):
+    ok, data = call_provisioning(payload={"person_id": person_id})
+    if ok:
+        outcome = data.get("results", {}).get(str(person_id), {})
+        flash("Provisioning ran: " + (json.dumps(outcome) if outcome else "no pending steps."), "ok")
+    else:
+        flash(f"Provisioning function not reached: {data}", "error")
+    return redirect(url_for("hire", person_id=person_id))
 
 
 @app.route("/healthz")

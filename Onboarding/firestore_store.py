@@ -16,6 +16,10 @@ Public API (Phase 1):
     upsert(person_id, ...)         -> "created" | "updated" | "unchanged"  (idempotent)
     list_by_lifecycle(lifecycle)   -> list[dict]
     append_audit(person_id, ...)   -> the audit entry
+
+Provisioning phase:
+    request_provision(person_id, ...)    -> the stored provision_request (dashboard approve)
+    record_account_event(person_id, ...) -> "updated" | "unchanged"  (provisioning function)
 """
 import logging
 from datetime import datetime, timezone
@@ -135,6 +139,104 @@ class OnboardingStore:
 
         result = _txn(client.transaction())
         logging.info(f"upsert {person_id}: {result}")
+        return result
+
+    def request_provision(self, person_id, *, by: str, billable_rate: float,
+                          personal_email: str, harvest_project_id,
+                          harvest_project_name: str = "",
+                          cost_rate: Optional[float] = None) -> Dict:
+        """
+        Record a human approval and advance needs_approval -> provisioning.
+
+        Stores the approval-form inputs (David's decision: billable rate + Harvest
+        project come from a human at approval time, personal email is where Zoho
+        credentials go) under `provision_request` so the provisioning function has
+        everything it needs, with `by` = the approving human for the audit trail.
+
+        Guards (raise ValueError, nothing written):
+          - doc must exist and be lifecycle == "needs_approval"
+          - back-catalog docs (pre-existing staff) are never provisionable
+        """
+        request_doc = {
+            "billable_rate": float(billable_rate),
+            "cost_rate": float(cost_rate) if cost_rate is not None else None,
+            "personal_email": personal_email,
+            "harvest_project_id": str(harvest_project_id),
+            "harvest_project_name": harvest_project_name,
+            "by": by,
+            "at": _now(),
+        }
+        ref = self._ref(person_id)
+
+        @firestore.transactional
+        def _txn(txn):
+            snap = ref.get(transaction=txn)
+            if not snap.exists:
+                raise ValueError(f"no onboarding doc for person_id={person_id}")
+            doc = snap.to_dict()
+            if doc.get("backfill_back_catalog"):
+                raise ValueError("back-catalog records cannot be provisioned")
+            if doc.get("lifecycle") != "needs_approval":
+                raise ValueError(f"lifecycle is {doc.get('lifecycle')!r}, expected 'needs_approval'")
+            audit = doc.get("audit", [])
+            audit.append({"action": "provision_requested", "by": by, "at": request_doc["at"]})
+            txn.update(ref, {
+                "lifecycle": "provisioning",
+                "provision_request": request_doc,
+                "audit": audit,
+                "updated_at": request_doc["at"],
+            })
+
+        _txn(self.client.transaction())
+        logging.info(f"request_provision {person_id}: approved by {by}")
+        return request_doc
+
+    # All three invites out -> the hire is just waiting on sign-ins.
+    _INVITE_FIELDS = (("zoho", "created_at"), ("slack", "invited_at"), ("harvest", "invited_at"))
+
+    def record_account_event(self, person_id, tool: str, fields: Dict, *,
+                             action: str, by: str = "system") -> str:
+        """
+        Set accounts.<tool>.<field> values (audit-logged, transactional). Only fields
+        whose value actually changes are written ("unchanged" if none do), so the
+        provisioning function can re-run safely.
+
+        Auto-advance: when a write completes the invite set (zoho created, slack +
+        harvest invited) while lifecycle == "provisioning", the doc moves to
+        "not_signed_in". Activation to "active" stays with the (later) poller.
+        """
+        ref = self._ref(person_id)
+
+        @firestore.transactional
+        def _txn(txn) -> str:
+            snap = ref.get(transaction=txn)
+            if not snap.exists:
+                raise KeyError(f"onboarding doc not found for person_id={person_id}")
+            doc = snap.to_dict()
+            accounts = doc.get("accounts") or {}
+            current = accounts.get(tool) or {}
+
+            updates = {f"accounts.{tool}.{k}": v for k, v in fields.items()
+                       if current.get(k) != v}
+            if not updates:
+                return "unchanged"
+
+            now = _now()
+            merged = dict(accounts)
+            merged[tool] = {**current, **fields}
+            if (doc.get("lifecycle") == "provisioning"
+                    and all((merged.get(t) or {}).get(f) for t, f in self._INVITE_FIELDS)):
+                updates["lifecycle"] = "not_signed_in"
+
+            audit = doc.get("audit", [])
+            audit.append({"action": action, "by": by, "at": now})
+            updates["audit"] = audit
+            updates["updated_at"] = now
+            txn.update(ref, updates)
+            return "updated"
+
+        result = _txn(self.client.transaction())
+        logging.info(f"record_account_event {person_id} {tool} {action}: {result}")
         return result
 
     def append_audit(self, person_id, action: str, by: str = "system") -> Dict:
