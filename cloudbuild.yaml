@@ -84,20 +84,30 @@ steps:
     args:
       - '-c'
       - |
+        set -e
         apt-get update && apt-get install -y python3 python3-pip
         pip3 install --upgrade pip
         pip3 install -r Payroll/requirements.txt
+        # PRIVATE: this is a gen2 (Cloud Run) function, which the org policy does
+        # NOT block from going public — it previously had an allUsers invoker
+        # binding. Deploy authenticated and strip any leftover allUsers binding;
+        # the scheduler's compute SA gets an explicit invoker grant instead.
         gcloud functions deploy sync_user_mappings \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
-          --allow-unauthenticated \
+          --no-allow-unauthenticated \
           --clear-env-vars \
           --set-secrets DEEL_API_KEY=deel-api-key:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,GCS_BUCKET_NAME=gcs-bucket-name:latest,SLACK_TOKEN=slack-token:latest \
           --entry-point mapping_sync_trigger \
           --set-build-env-vars GOOGLE_FUNCTION_SOURCE=sync_mappings.py \
           --source=Payroll \
           --timeout=300s
+        gcloud functions remove-invoker-policy-binding sync_user_mappings \
+          --region=europe-west1 --member="allUsers" --quiet || true
+        gcloud functions add-invoker-policy-binding sync_user_mappings \
+          --region=europe-west1 \
+          --member="serviceAccount:164865114626-compute@developer.gserviceaccount.com" --quiet
 
   # 6. Deploy Onboarding Backfill (NEW - seeds Firestore from Deel, idempotent)
   - name: 'google/cloud-sdk:slim'
@@ -122,6 +132,34 @@ steps:
           --source=Onboarding \
           --timeout=540s
 
+  # 6b. Deploy Onboarding Provisioning (approve flow: Zoho notify, Slack invite,
+  #     Harvest contractor + project; also serves the dashboard's project list).
+  #     PRIVATE — invoked by the dashboard + scheduler sweep via OIDC (compute SA).
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        apt-get update && apt-get install -y python3 python3-pip
+        pip3 install --upgrade pip
+        pip3 install -r Onboarding/requirements.txt
+        gcloud functions deploy provision_onboarding \
+          --region europe-west1 \
+          --runtime python311 \
+          --trigger-http \
+          --no-allow-unauthenticated \
+          --clear-env-vars \
+          --set-secrets SLACK_TOKEN=slack-token:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest \
+          --entry-point provision_onboarding \
+          --set-build-env-vars GOOGLE_FUNCTION_SOURCE=provisioning.py \
+          --source=Onboarding \
+          --timeout=300s
+        # Dashboard (Cloud Run) and the scheduler both run as the compute SA.
+        gcloud functions add-invoker-policy-binding provision_onboarding \
+          --region=europe-west1 \
+          --member="serviceAccount:164865114626-compute@developer.gserviceaccount.com" --quiet
+
   # 7. Create Cloud Scheduler jobs
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
@@ -145,6 +183,7 @@ steps:
         INVOICING_URL=$(geturl create_invoices_http)
         MAPPING_SYNC_URL=$(geturl sync_user_mappings)
         BACKFILL_URL=$(geturl backfill_onboarding)
+        PROVISION_URL=$(geturl provision_onboarding)
 
         # Scheduler auth: the org policy blocks public (allUsers) functions, so every
         # job must invoke its target with an OIDC token. Grant the scheduler SA the
@@ -216,6 +255,20 @@ steps:
           --oidc-service-account-email=$$SCHED_SA \
           --oidc-token-audience=$$BACKFILL_URL \
           --description="Reconcile onboarding Firestore docs from Deel (idempotent)"
+
+        # Schedule 6: Provisioning sweep - retries hires stuck in lifecycle=provisioning
+        # (e.g. seat cap was hit, Zoho was marked done but the invite call failed).
+        # POST with no person_id = sweep everything pending; every step is idempotent.
+        gcloud scheduler jobs delete onboarding-provision-sweep --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http onboarding-provision-sweep \
+          --location=europe-west1 \
+          --schedule="30 7 * * *" \
+          --uri=$$PROVISION_URL \
+          --http-method=POST \
+          --time-zone="Asia/Tbilisi" \
+          --oidc-service-account-email=$$SCHED_SA \
+          --oidc-token-audience=$$PROVISION_URL \
+          --description="Retry pending onboarding provisioning steps (idempotent sweep)"
 
 options:
   logging: CLOUD_LOGGING_ONLY
