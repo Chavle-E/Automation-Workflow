@@ -49,7 +49,7 @@ SLACK_TOKEN = (os.getenv("SLACK_TOKEN") or "").strip()
 
 ZOHO_INSTRUCTIONS = (
     ":busts_in_silhouette: *Zoho user needed for {name}* (approved by {approver})\n"
-    "1. Zoho admin (`billing@thirstysprout.com`) → add user *{work_email}*, Role = *User* (never Admin)\n"
+    "1. Zoho admin (`hello@thirstysprout.ai`) → add user *{work_email}*, Role = *User* (never Admin)\n"
     "2. Auto-generate the password (≥8, upper+lower+number+special)\n"
     "3. CHECK “send credentials via email” → personal email *{personal_email}*\n"
     "4. CHECK “force password change on first login”\n"

@@ -118,7 +118,7 @@ catches). Domain: **always `@thirstysprout.ai`** for these contractors (the othe
 domain `choppingblock.ai` is not used here). Email username = `firstname.lastname`,
 first given + first surname → `syed.ali` (the manual `syedasad.ali` predated this rule).
 
-**1) Zoho (admin = billing@thirstysprout.com).** Create user:
+**1) Zoho (admin = hello@thirstysprout.ai — the Zoho Mail domain admin).** Create user:
 - First/Last name = Deel `first_name`/`last_name` (e.g. `Syed Asad` / `Ali`).
 - Username = `<local-part>@thirstysprout.ai`.
 - Password = auto-generate satisfying Zoho rules: ≥8 chars, ≥1 lower, ≥1 upper,
