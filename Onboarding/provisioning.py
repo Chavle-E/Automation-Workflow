@@ -41,9 +41,11 @@ from slack_helpers import invite_to_workspace, notify_operators
 load_dotenv(dotenv_path="../.env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-HARVEST_API_KEY = os.getenv("HARVEST_API_KEY")
-HARVEST_ACCOUNT_ID = os.getenv("HARVEST_ACCOUNT_ID")
-SLACK_TOKEN = os.getenv("SLACK_TOKEN")
+# .strip(): secret versions created with `echo` carry a trailing newline, which
+# is invalid in HTTP header values (bit us live on harvest-acc-id).
+HARVEST_API_KEY = (os.getenv("HARVEST_API_KEY") or "").strip()
+HARVEST_ACCOUNT_ID = (os.getenv("HARVEST_ACCOUNT_ID") or "").strip()
+SLACK_TOKEN = (os.getenv("SLACK_TOKEN") or "").strip()
 
 ZOHO_INSTRUCTIONS = (
     ":busts_in_silhouette: *Zoho user needed for {name}* (approved by {approver})\n"

@@ -28,9 +28,11 @@ class SeatLimitError(Exception):
 
 class HarvestClient:
     def __init__(self, api_key: str, account_id: str):
+        # .strip(): header values reject the trailing newline `echo`-created
+        # secret versions carry.
         self.headers = {
-            "Harvest-Account-Id": str(account_id),
-            "Authorization": f"Bearer {api_key}",
+            "Harvest-Account-Id": str(account_id).strip(),
+            "Authorization": f"Bearer {str(api_key).strip()}",
             "User-Agent": "OnboardingProvisioning",
         }
 
