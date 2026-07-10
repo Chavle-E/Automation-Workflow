@@ -5,9 +5,6 @@ steps:
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
-        pip3 install -r Announcements/requirements.txt
         gcloud functions deploy post_message_to_slack_http \
           --region europe-west1 \
           --runtime python311 \
@@ -24,9 +21,6 @@ steps:
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
-        pip3 install -r Invoicing/requirements.txt
         gcloud functions deploy create_invoices_http \
           --region europe-west1 \
           --runtime python311 \
@@ -43,9 +37,6 @@ steps:
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
-        pip3 install -r Payroll/requirements.txt
         gcloud functions deploy process_payroll_http \
           --region europe-west1 \
           --runtime python311 \
@@ -63,9 +54,6 @@ steps:
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
-        pip3 install -r Payroll_Reminders/requirements.txt
         gcloud functions deploy send_timesheet_reminders \
           --region europe-west1 \
           --runtime python311 \
@@ -85,9 +73,6 @@ steps:
       - '-c'
       - |
         set -e
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
-        pip3 install -r Payroll/requirements.txt
         # PRIVATE: this is a gen2 (Cloud Run) function, which the org policy does
         # NOT block from going public — it previously had an allUsers invoker
         # binding. Deploy authenticated and strip any leftover allUsers binding;
@@ -115,12 +100,9 @@ steps:
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
         # Single source of truth: copy shared modules from Payroll into the
         # Onboarding source dir so --source=Onboarding packages them.
         cp Payroll/deel_client.py Payroll/matcher.py Onboarding/
-        pip3 install -r Onboarding/requirements.txt
         gcloud functions deploy backfill_onboarding \
           --region europe-west1 \
           --runtime python311 \
@@ -141,16 +123,13 @@ steps:
       - '-c'
       - |
         set -e
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
-        pip3 install -r Onboarding/requirements.txt
         gcloud functions deploy provision_onboarding \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --no-allow-unauthenticated \
           --clear-env-vars \
-          --set-secrets SLACK_TOKEN=slack-token:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest \
+          --set-secrets SLACK_TOKEN=slack-token:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,ZOHO_CLIENT_ID=zoho-client-id:latest,ZOHO_CLIENT_SECRET=zoho-client-secret:latest,ZOHO_REFRESH_TOKEN=zoho-refresh-token:latest \
           --entry-point provision_onboarding \
           --set-build-env-vars GOOGLE_FUNCTION_SOURCE=provisioning.py \
           --source=Onboarding \

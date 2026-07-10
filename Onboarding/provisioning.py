@@ -8,12 +8,16 @@ mark, and by a daily scheduler sweep that retries anything still pending.
 
 Per-hire steps, in the playbook order Zoho -> Slack -> Harvest:
 
-  1. Zoho has no API access yet -> NOTIFY-A-HUMAN: DM the operators the exact
-     playbook instructions (auto-gen password, credentials to the PERSONAL email,
-     force password change). A human then creates the user and clicks
-     "mark Zoho created" in the dashboard.
+  1. Zoho: create the work mailbox via the Zoho Mail API (Self Client of
+     hello@thirstysprout.ai; auto-generated password, forced change at first
+     login, role=member) and DM the operators the one-time credentials to
+     forward to the hire's PERSONAL email. If the API creds are missing or the
+     call fails, fall back to NOTIFY-A-HUMAN: DM the exact playbook instructions;
+     a human then creates the user and clicks "mark Zoho created" in the
+     dashboard.
   2. Slack + Harvest invites target the WORK email, which only exists once the
-     Zoho user is created — so both steps WAIT for accounts.zoho.created_at.
+     Zoho user is created — so both steps WAIT for accounts.zoho.created_at
+     (set in the same run when the API path succeeds).
      Slack: try the admin invite API, fall back to a manual-invite DM.
      Harvest: create the contractor (rate/cost from the approval form, 40h,
      Member) and assign to the approved project. A full plan (seat cap) never
@@ -37,17 +41,40 @@ from slack_sdk import WebClient
 from firestore_store import OnboardingStore, _now
 from harvest_client import HarvestClient, SeatLimitError
 from slack_helpers import invite_to_workspace, notify_operators
+from zoho_client import ZohoMailClient, generate_password
 
 load_dotenv(dotenv_path="../.env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-HARVEST_API_KEY = os.getenv("HARVEST_API_KEY")
-HARVEST_ACCOUNT_ID = os.getenv("HARVEST_ACCOUNT_ID")
-SLACK_TOKEN = os.getenv("SLACK_TOKEN")
+# .strip(): secret versions created with `echo` carry a trailing newline, which
+# is invalid in HTTP header values (bit us live on harvest-acc-id).
+HARVEST_API_KEY = (os.getenv("HARVEST_API_KEY") or "").strip()
+HARVEST_ACCOUNT_ID = (os.getenv("HARVEST_ACCOUNT_ID") or "").strip()
+SLACK_TOKEN = (os.getenv("SLACK_TOKEN") or "").strip()
+ZOHO_CLIENT_ID = (os.getenv("ZOHO_CLIENT_ID") or "").strip()
+ZOHO_CLIENT_SECRET = (os.getenv("ZOHO_CLIENT_SECRET") or "").strip()
+ZOHO_REFRESH_TOKEN = (os.getenv("ZOHO_REFRESH_TOKEN") or "").strip()
+
+ZOHO_CREATED_MESSAGE = (
+    ":white_check_mark: *Zoho mailbox created for {name}*: *{work_email}* "
+    "(approved by {approver})\n"
+    "One-time password: `{password}` — the user MUST change it at first login.\n"
+    "Please send these credentials to the personal email *{personal_email}*, and the "
+    "onboarding guide to BOTH {work_email} and {personal_email}.\n"
+    "(This password is only shown here — it is not stored anywhere.)\n"
+    "Slack + Harvest invites to {work_email} are going out automatically now."
+)
+
+ZOHO_EXISTING_MESSAGE = (
+    ":information_source: *Zoho mailbox already exists* for *{name}* ({work_email}) — "
+    "marked as created and moving on to the Slack + Harvest invites. If the hire never "
+    "received credentials, reset their password from the Zoho admin console and send it "
+    "to *{personal_email}*."
+)
 
 ZOHO_INSTRUCTIONS = (
     ":busts_in_silhouette: *Zoho user needed for {name}* (approved by {approver})\n"
-    "1. Zoho admin (`billing@thirstysprout.com`) → add user *{work_email}*, Role = *User* (never Admin)\n"
+    "1. Zoho admin (`hello@thirstysprout.ai`) → add user *{work_email}*, Role = *User* (never Admin)\n"
     "2. Auto-generate the password (≥8, upper+lower+number+special)\n"
     "3. CHECK “send credentials via email” → personal email *{personal_email}*\n"
     "4. CHECK “force password change on first login”\n"
@@ -83,7 +110,8 @@ def _acct(doc, tool):
     return (doc.get("accounts") or {}).get(tool) or {}
 
 
-def provision_one(store: OnboardingStore, slack: WebClient, harvest: HarvestClient, doc):
+def provision_one(store: OnboardingStore, slack: WebClient, harvest: HarvestClient, doc,
+                  zoho: ZohoMailClient = None):
     """Run all still-pending steps for one hire. Returns a step->outcome dict."""
     person_id = doc["person_id"]
     req = doc.get("provision_request") or {}
@@ -100,21 +128,51 @@ def provision_one(store: OnboardingStore, slack: WebClient, harvest: HarvestClie
     name = doc.get("personal_name") or doc.get("contract_name") or person_id
     work_email = doc.get("email")
 
-    # --- 1. Zoho: notify-a-human (no API), once -------------------------------
+    # --- 1. Zoho mailbox: API first, notify-a-human as fallback ----------------
     if not _acct(doc, "zoho").get("created_at"):
-        if not _acct(doc, "zoho").get("requested_at"):
-            notify_operators(slack, ZOHO_INSTRUCTIONS.format(
-                name=name, approver=req.get("by", "?"), work_email=work_email,
-                personal_email=req.get("personal_email", "?")))
-            store.record_account_event(person_id, "zoho", {"requested_at": _now()},
-                                       action="zoho_manual_requested")
-            outcomes["zoho"] = "operators notified"
-        else:
-            outcomes["zoho"] = "waiting for manual creation"
-        # Work email doesn't exist until Zoho is done — hold the invites.
-        outcomes["slack"] = outcomes["harvest"] = "waiting for zoho.created_at"
-        return outcomes
-    outcomes["zoho"] = "created"
+        created = False
+        if zoho is not None:
+            try:
+                first, last = _split_name(doc)
+                if zoho.find_user_by_email(work_email):
+                    notify_operators(slack, ZOHO_EXISTING_MESSAGE.format(
+                        name=name, work_email=work_email,
+                        personal_email=req.get("personal_email", "?")))
+                    store.record_account_event(
+                        person_id, "zoho", {"created_at": _now(), "mode": "api_existing"},
+                        action="zoho_found_existing")
+                    outcomes["zoho"] = "already existed in Zoho (marked created)"
+                else:
+                    # The one-time password lives ONLY in the operator DM — never
+                    # in Firestore or logs. Forced change at first login.
+                    password = generate_password()
+                    zoho.create_user(work_email, first, last, password)
+                    store.record_account_event(
+                        person_id, "zoho", {"created_at": _now(), "mode": "api"},
+                        action="zoho_created_api")
+                    notify_operators(slack, ZOHO_CREATED_MESSAGE.format(
+                        name=name, approver=req.get("by", "?"), work_email=work_email,
+                        personal_email=req.get("personal_email", "?"), password=password))
+                    outcomes["zoho"] = "created via API"
+                created = True
+            except Exception as e:  # fall back to the human playbook DM
+                logging.error(f"Zoho API provisioning failed for {person_id}: {e}")
+                outcomes["zoho_api_error"] = str(e)[:200]
+        if not created:
+            if not _acct(doc, "zoho").get("requested_at"):
+                notify_operators(slack, ZOHO_INSTRUCTIONS.format(
+                    name=name, approver=req.get("by", "?"), work_email=work_email,
+                    personal_email=req.get("personal_email", "?")))
+                store.record_account_event(person_id, "zoho", {"requested_at": _now()},
+                                           action="zoho_manual_requested")
+                outcomes["zoho"] = "operators notified (manual fallback)"
+            else:
+                outcomes["zoho"] = "waiting for manual creation"
+            # Work email doesn't exist until Zoho is done — hold the invites.
+            outcomes["slack"] = outcomes["harvest"] = "waiting for zoho.created_at"
+            return outcomes
+    else:
+        outcomes["zoho"] = "created"
 
     # --- 2. Slack invite (work email) ------------------------------------------
     slack_acct = _acct(doc, "slack")
@@ -177,6 +235,12 @@ def run_provisioning(person_id=None):
     store = OnboardingStore()
     slack = WebClient(token=SLACK_TOKEN)
     harvest = HarvestClient(HARVEST_API_KEY, HARVEST_ACCOUNT_ID)
+    # Zoho creds are optional: without them the Zoho step degrades to the
+    # notify-a-human playbook DM instead of failing the whole run.
+    zoho = (ZohoMailClient(ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN)
+            if (ZOHO_CLIENT_ID and ZOHO_CLIENT_SECRET and ZOHO_REFRESH_TOKEN) else None)
+    if zoho is None:
+        logging.warning("ZOHO_* env not set — Zoho step will use the manual fallback")
 
     if person_id:
         doc = store.get(person_id)
@@ -188,7 +252,7 @@ def run_provisioning(person_id=None):
 
     results = {}
     for doc in docs:
-        results[doc["person_id"]] = provision_one(store, slack, harvest, doc)
+        results[doc["person_id"]] = provision_one(store, slack, harvest, doc, zoho=zoho)
     logging.info(f"Provisioning results: {results}")
     return results
 

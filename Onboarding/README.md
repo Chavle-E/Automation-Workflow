@@ -118,7 +118,7 @@ catches). Domain: **always `@thirstysprout.ai`** for these contractors (the othe
 domain `choppingblock.ai` is not used here). Email username = `firstname.lastname`,
 first given + first surname → `syed.ali` (the manual `syedasad.ali` predated this rule).
 
-**1) Zoho (admin = billing@thirstysprout.com).** Create user:
+**1) Zoho (admin = hello@thirstysprout.ai — the Zoho Mail domain admin).** Create user:
 - First/Last name = Deel `first_name`/`last_name` (e.g. `Syed Asad` / `Ali`).
 - Username = `<local-part>@thirstysprout.ai`.
 - Password = auto-generate satisfying Zoho rules: ≥8 chars, ≥1 lower, ≥1 upper,
@@ -168,6 +168,7 @@ email, or Slack. To be decided with David.
 | `provisioning.py` | `provision_onboarding` HTTP function — the approve flow (see below) |
 | `harvest_client.py` | minimal Harvest v2 client: invite contractor, assign project, seat-cap detection |
 | `slack_helpers.py` | workspace invite (API w/ manual fallback) + operator DMs |
+| `zoho_client.py` | Zoho Mail admin client: refresh-token auth, list/create org mailboxes |
 | `onboarding_poll.py`, `onboarding_digest.py` | pre-existing candidate selection + Slack digest |
 
 `deel_client.py` and `matcher.py` live in `Payroll/` (single source of truth) and
@@ -214,7 +215,8 @@ gcloud projects add-iam-policy-binding PROJECT \
 ## Provisioning (the approve flow)
 
 Built as the authenticated `provision_onboarding` Cloud Function (cloudbuild step 6b;
-secrets: `slack-token`, `harvest-api-key`, `harvest-acc-id`). It is invoked three ways:
+secrets: `slack-token`, `harvest-api-key`, `harvest-acc-id`, `zoho-client-id`,
+`zoho-client-secret`, `zoho-refresh-token`). It is invoked three ways:
 by the **dashboard** right after an approval or a manual "mark done" (OIDC, compute SA),
 by the **`onboarding-provision-sweep`** scheduler daily at 07:30 Asia/Tbilisi (empty
 POST = retry every doc stuck in `lifecycle=provisioning`), and manually. It also serves
@@ -226,11 +228,17 @@ Flow per hire, in the playbook order (all steps idempotent, everything audit-log
 1. **Approve** (dashboard form → `request_provision`): billable rate, optional cost
    rate, personal email, Harvest project. Guards: only `needs_approval`, never
    back-catalog. Doc moves to `provisioning`.
-2. **Zoho — notify-a-human** (no API access yet): operators (env
-   `ONBOARDING_NOTIFY_USERS`, comma-separated Slack names) get a DM with the exact
-   playbook steps. Slack/Harvest invites **wait** here, because they target the work
-   email, which only exists once the Zoho user is created. A human then clicks
-   **Mark Zoho created** on the dashboard, which re-invokes the function.
+2. **Zoho — API first, human fallback**: the work mailbox is created via the Zoho
+   Mail API (`zoho_client.py`; Self Client of `hello@thirstysprout.ai`, scope
+   `ZohoMail.organization.accounts.ALL`, US DC) with an auto-generated password,
+   forced change at first login, role=member. The operators (env
+   `ONBOARDING_NOTIFY_USERS`, comma-separated Slack names) get a DM with the
+   one-time password to forward to the hire's **personal** email (it is never
+   stored). On success the flow continues to Slack/Harvest in the same run.
+   If the Zoho secrets are missing or the API call fails, it degrades to the old
+   notify-a-human DM with the exact playbook steps; Slack/Harvest invites **wait**
+   (they target the work email, which only exists once the Zoho user is created)
+   until a human clicks **Mark Zoho created** on the dashboard.
 3. **Slack invite** to the work email: tries the admin invite API, and if the token
    can't invite (missing scope / plan) falls back to a manual-invite DM +
    **Mark Slack invited** on the dashboard.
