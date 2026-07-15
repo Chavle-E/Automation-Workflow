@@ -139,6 +139,22 @@ steps:
           --region=europe-west1 \
           --member="serviceAccount:164865114626-compute@developer.gserviceaccount.com" --quiet
 
+  # 6c. Deploy Onboarding Dashboard (Cloud Run, IAP-protected)
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        cd Dashboard
+        gcloud run deploy onboarding-dashboard \
+          --region=europe-west1 \
+          --source=. \
+          --runtime=python311 \
+          --allow-unauthenticated \
+          --set-env-vars PROVISION_URL=https://europe-west1-charged-sector-427921-v5.cloudfunctions.net/provision_onboarding,REQUIRE_IAP=1 \
+          --timeout=3600s \
+          --quiet
+
   # 7. Create Cloud Scheduler jobs
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
