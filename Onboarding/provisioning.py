@@ -59,8 +59,9 @@ ZOHO_CREATED_MESSAGE = (
     ":white_check_mark: *Zoho mailbox created for {name}*: *{work_email}* "
     "(approved by {approver})\n"
     "One-time password: `{password}` — the user MUST change it at first login.\n"
-    "Please send these credentials to the personal email *{personal_email}*, and the "
-    "onboarding guide to BOTH {work_email} and {personal_email}.\n"
+    "Please send these credentials to the personal email *{personal_email}*, along with:\n"
+    "• Onboarding guide (send to BOTH {work_email} and {personal_email})\n"
+    "• Company guide: https://help.thirstysprout.com/\n"
     "(This password is only shown here — it is not stored anywhere.)\n"
     "Slack + Harvest invites to {work_email} are going out automatically now."
 )
@@ -73,14 +74,16 @@ ZOHO_EXISTING_MESSAGE = (
 )
 
 ZOHO_INSTRUCTIONS = (
-    ":busts_in_silhouette: *Zoho user needed for {name}* (approved by {approver})\n"
-    "1. Zoho admin (`hello@thirstysprout.ai`) → add user *{work_email}*, Role = *User* (never Admin)\n"
-    "2. Auto-generate the password (≥8, upper+lower+number+special)\n"
-    "3. CHECK “send credentials via email” → personal email *{personal_email}*\n"
-    "4. CHECK “force password change on first login”\n"
-    "5. Send the onboarding guide to BOTH {work_email} and {personal_email}\n"
-    "Then open the dashboard → this hire → *Mark Zoho created* (that releases the "
-    "Slack + Harvest invites, which go to the work email)."
+    “:busts_in_silhouette: *Zoho user needed for {name}* (approved by {approver})\n”
+    “1. Zoho admin (`hello@thirstysprout.ai`) → add user *{work_email}*, Role = *User* (never Admin)\n”
+    “2. Auto-generate the password (≥8, upper+lower+number+special)\n”
+    “3. CHECK “send credentials via email” → personal email *{personal_email}*\n”
+    “4. CHECK “force password change on first login”\n”
+    “5. Send to BOTH {work_email} and {personal_email}:\n”
+    “   • Onboarding guide\n”
+    “   • Company guide: https://help.thirstysprout.com/\n”
+    “Then open the dashboard → this hire → *Mark Zoho created* (that releases the “
+    “Slack + Harvest invites, which go to the work email).”
 )
 
 SEAT_CAP_MESSAGE = (
@@ -95,6 +98,15 @@ SLACK_MANUAL_MESSAGE = (
     "({detail}). Please invite *{work_email}* to the workspace with default channels "
     "#announcements + #thirstysprout-projects-and-off-topic-stuff, then *Mark Slack "
     "invited* on the dashboard."
+)
+
+SLACK_COMPLETED_MESSAGE = (
+    ":white_check_mark: *Slack invite sent* to *{name}* ({work_email})"
+)
+
+HARVEST_COMPLETED_MESSAGE = (
+    ":white_check_mark: *Harvest contractor added* for *{name}* ({work_email}) — "
+    "Rate: ${rate}/hr, Project: {project}, Seat assignment complete"
 )
 
 
@@ -186,6 +198,10 @@ def provision_one(store: OnboardingStore, slack: WebClient, harvest: HarvestClie
             store.record_account_event(person_id, "slack",
                                        {"invited_at": _now(), "invite_mode": "api"},
                                        action="slack_invited")
+            try:
+                slack.chat_postMessage(channel="onboarding", text=SLACK_COMPLETED_MESSAGE.format(name=name, work_email=work_email), mrkdwn=True)
+            except Exception as e:
+                logging.warning(f"Failed to send Slack notification to #onboarding: {e}")
             outcomes["slack"] = "invited via API"
         else:
             notify_operators(slack, SLACK_MANUAL_MESSAGE.format(
@@ -211,6 +227,18 @@ def provision_one(store: OnboardingStore, slack: WebClient, harvest: HarvestClie
                 "invited_at": _now(), "user_id": user["id"], "seat": "ok",
                 "project_id": req["harvest_project_id"],
             }, action="harvest_invited")
+            try:
+                slack.chat_postMessage(
+                    channel="onboarding",
+                    text=HARVEST_COMPLETED_MESSAGE.format(
+                        name=name, work_email=work_email,
+                        rate=req.get("billable_rate", "?"),
+                        project=req.get("harvest_project_name", "?")
+                    ),
+                    mrkdwn=True
+                )
+            except Exception as e:
+                logging.warning(f"Failed to send Harvest notification to #onboarding: {e}")
             outcomes["harvest"] = ("existing user assigned to project" if existing
                                    else "contractor created + assigned")
         except SeatLimitError as e:

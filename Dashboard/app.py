@@ -198,7 +198,7 @@ def hire(person_id):
     doc = store().get(person_id)
     if not doc:
         abort(404, f"No onboarding record for {person_id}")
-    approvable = doc.get("lifecycle") == "needs_approval" and not doc.get("backfill_back_catalog")
+    approvable = doc.get("lifecycle") == "needs_approval"
     return render_template(
         "detail.html",
         doc=doc,
