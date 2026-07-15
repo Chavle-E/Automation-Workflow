@@ -77,8 +77,8 @@ ZOHO_INSTRUCTIONS = (
     “:busts_in_silhouette: *Zoho user needed for {name}* (approved by {approver})\n”
     “1. Zoho admin (`hello@thirstysprout.ai`) → add user *{work_email}*, Role = *User* (never Admin)\n”
     “2. Auto-generate the password (≥8, upper+lower+number+special)\n”
-    “3. CHECK “send credentials via email” → personal email *{personal_email}*\n”
-    “4. CHECK “force password change on first login”\n”
+    “3. CHECK 'send credentials via email' → personal email *{personal_email}*\n”
+    “4. CHECK 'force password change on first login'\n”
     “5. Send to BOTH {work_email} and {personal_email}:\n”
     “   • Onboarding guide\n”
     “   • Company guide: https://help.thirstysprout.com/\n”
