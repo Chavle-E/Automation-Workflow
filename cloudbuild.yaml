@@ -254,5 +254,4 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-ckau
 timeout: 1800s
