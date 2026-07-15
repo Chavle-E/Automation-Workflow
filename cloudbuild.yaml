@@ -91,7 +91,7 @@ steps:
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
-          --allow-unauthenticated \
+          --no-allow-unauthenticated \
           --clear-env-vars \
           --set-secrets DEEL_API_KEY=deel-api-key:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,GCS_BUCKET_NAME=gcs-bucket-name:latest,SLACK_TOKEN=slack-token:latest \
           --entry-point mapping_sync_trigger \
@@ -150,9 +150,11 @@ steps:
         # job must invoke its target with an OIDC token. Grant the scheduler SA the
         # invoker role on each function (idempotent), then pass --oidc-* on each job.
         SCHED_SA=164865114626-compute@developer.gserviceaccount.com
-        for FN in process_payroll_http send_timesheet_reminders create_invoices_http sync_user_mappings backfill_onboarding; do
+        for FN in process_payroll_http send_timesheet_reminders create_invoices_http backfill_onboarding; do
           gcloud functions add-iam-policy-binding $$FN --region=europe-west1 --member="serviceAccount:$$SCHED_SA" --role="roles/cloudfunctions.invoker" --quiet || true
         done
+        # sync_user_mappings is gen2 (Cloud Run) — use run.invoker role
+        gcloud run services add-iam-policy-binding sync_user_mappings --region=europe-west1 --member="serviceAccount:$$SCHED_SA" --role="roles/run.invoker" --quiet || true
 
         # Schedule 1: Payroll sync - Every 1st and 16th at 9 AM
         gcloud scheduler jobs delete payroll-sync --location=europe-west1 --quiet || true
@@ -219,5 +221,5 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
-
+ckau
 timeout: 1800s
