@@ -21,6 +21,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from dotenv import load_dotenv
+from slack_sdk import WebClient
 
 # Shared modules: cloudbuild copies deel_client.py + matcher.py from Payroll/ at
 # deploy (single source of truth). Locally, fall back to the sibling package.
@@ -37,6 +38,8 @@ load_dotenv(dotenv_path="../.env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 DEEL_API_KEY = os.getenv("DEEL_API_KEY")
+SLACK_TOKEN = (os.getenv("SLACK_TOKEN") or "").strip()
+SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#onboarding")
 
 # Onboarding gate (confirmed against the live People API + onboarding_poll.py):
 #   active                          -> onboarding COMPLETE   -> needs_approval
@@ -135,6 +138,35 @@ def build_record(person, contracts_by_id):
     }
 
 
+def _notify_new_hire(hire_data):
+    """Send Slack notification when a genuine new hire is discovered."""
+    if not SLACK_TOKEN or not SLACK_CHANNEL:
+        logging.debug("Slack notification skipped: token or channel not configured")
+        return
+
+    try:
+        client = WebClient(token=SLACK_TOKEN)
+        name = hire_data["identity"]["personal_name"]
+        email = hire_data["identity"]["email"]
+        start_date = hire_data["identity"]["start_date"]
+        confidence = hire_data["identity"]["name_confidence"]
+
+        confidence_emoji = {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(confidence, "⚪")
+
+        message = (
+            f"{confidence_emoji} *New hire discovered*: {name}\n"
+            f"Email: `{email}`\n"
+            f"Start date: {start_date}\n"
+            f"Confidence: {confidence}\n"
+            f"_Waiting for approval in the onboarding dashboard._"
+        )
+
+        client.chat_postMessage(channel=SLACK_CHANNEL, text=message, mrkdwn=True)
+        logging.info(f"Slack notification sent for {email}")
+    except Exception as e:
+        logging.warning(f"Failed to send Slack notification: {e}")
+
+
 def run_backfill(dry_run=False):
     """
     Read current Deel people+contracts and upsert a Firestore doc per active hire.
@@ -157,6 +189,7 @@ def run_backfill(dry_run=False):
 
     summary = {"created": 0, "updated": 0, "unchanged": 0, "skipped": 0,
                "gated": 0, "needs_approval": 0, "back_catalog": 0, "low_confidence": 0}
+    new_genuine_hires = []
 
     for person in people:
         record = build_record(person, contracts_by_id)
@@ -191,6 +224,14 @@ def run_backfill(dry_run=False):
                 deel_status=record["deel_status"],
             )
             summary[result] += 1
+            # Track newly created genuine hires (not back-catalog) for Slack notification
+            if result == "created" and not record["identity"]["backfill_back_catalog"]:
+                new_genuine_hires.append(record)
+
+    # Send Slack notifications for newly discovered genuine hires
+    if not dry_run:
+        for hire in new_genuine_hires:
+            _notify_new_hire(hire)
 
     logging.info(f"Backfill summary: {summary}")
     return summary
