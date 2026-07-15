@@ -108,7 +108,6 @@ steps:
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --clear-env-vars \
           --set-secrets DEEL_API_KEY=deel-api-key:latest,SLACK_TOKEN=slack-token:latest \
           --set-env-vars SLACK_CHANNEL=onboarding \
           --entry-point backfill_onboarding \
