@@ -149,7 +149,6 @@ steps:
         gcloud run deploy onboarding-dashboard \
           --region=europe-west1 \
           --source=. \
-          --runtime=python311 \
           --allow-unauthenticated \
           --set-env-vars PROVISION_URL=https://europe-west1-charged-sector-427921-v5.cloudfunctions.net/provision_onboarding,REQUIRE_IAP=1 \
           --timeout=3600s \
