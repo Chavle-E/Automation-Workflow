@@ -84,3 +84,28 @@ a:hover { text-decoration: underline; }
 .acct h3 { margin: 0 0 8px; font-size: 13px; text-transform: capitalize; }
 .acct .kv { grid-template-columns: 100px 1fr; }
 .ts { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
+
+/* flash messages */
+.flash { border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; border: 1px solid var(--line); }
+.flash-ok { background: rgba(70, 192, 122, .12); border-color: var(--green); color: #ccf2dc; }
+.flash-warn { background: rgba(224, 162, 60, .12); border-color: var(--amber); color: #f4e0bd; }
+.flash-error { background: rgba(224, 87, 75, .12); border-color: var(--red); color: #ffd7d2; }
+
+/* approve form + action buttons */
+.hint { color: var(--muted); margin: 0 0 14px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; align-items: end; }
+.form-grid label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 12px; }
+.form-grid input, .form-grid select {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--text); padding: 8px 10px; font: inherit;
+}
+.form-grid input:focus, .form-grid select:focus { outline: none; border-color: var(--accent); }
+.btn {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--text); padding: 8px 16px; font: inherit; cursor: pointer;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #0f1115; font-weight: 600; }
+.btn.small-btn { font-size: 12px; padding: 4px 10px; margin-top: 8px; }
+.inline-form { display: inline-block; margin-top: 10px; }
+.life-provisioning, .life-not_signed_in { color: var(--amber); border-color: var(--amber); }

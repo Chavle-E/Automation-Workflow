@@ -12,6 +12,9 @@
   <a class="card {{ 'active' if lifecycle == 'gated' }}" href="{{ url_for('roster', lifecycle='gated') }}">
     <div class="num">{{ summary.gated }}</div><div class="lbl">gated</div>
   </a>
+  <a class="card {{ 'active' if lifecycle == 'provisioning' }}" href="{{ url_for('roster', lifecycle='provisioning') }}">
+    <div class="num">{{ summary.provisioning }}</div><div class="lbl">provisioning</div>
+  </a>
   <a class="card warn {{ 'active' if confidence == 'low' }}" href="{{ url_for('roster', confidence='low') }}">
     <div class="num">{{ summary.low_confidence }}</div><div class="lbl">low confidence</div>
   </a>
