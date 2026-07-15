@@ -6,6 +6,9 @@
   <a class="card" href="{{ url_for('roster') }}">
     <div class="num">{{ summary.total }}</div><div class="lbl">total hires</div>
   </a>
+  <a class="card {{ 'active' if new_only }}" href="{{ url_for('roster', new='1') }}">
+    <div class="num">{{ summary.new_hire }}</div><div class="lbl">new hires</div>
+  </a>
   <a class="card {{ 'active' if lifecycle == 'needs_approval' }}" href="{{ url_for('roster', lifecycle='needs_approval') }}">
     <div class="num">{{ summary.needs_approval }}</div><div class="lbl">needs approval</div>
   </a>
@@ -23,9 +26,9 @@
   </div>
 </section>
 
-{% if lifecycle or confidence %}
+{% if lifecycle or confidence or new_only %}
 <p class="filternote">
-  Filtered{% if lifecycle %} · lifecycle=<b>{{ lifecycle }}</b>{% endif %}{% if confidence %} · confidence=<b>{{ confidence }}</b>{% endif %}
+  Filtered{% if lifecycle %} · lifecycle=<b>{{ lifecycle }}</b>{% endif %}{% if confidence %} · confidence=<b>{{ confidence }}</b>{% endif %}{% if new_only %} · <b>new hires only</b>{% endif %}
   · <a href="{{ url_for('roster') }}">clear</a>
 </p>
 {% endif %}

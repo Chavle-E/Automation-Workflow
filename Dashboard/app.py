@@ -144,7 +144,7 @@ def harvest_projects():
 
 def _summary(docs):
     s = {"total": len(docs), "gated": 0, "needs_approval": 0, "provisioning": 0,
-         "low_confidence": 0, "back_catalog": 0}
+         "low_confidence": 0, "back_catalog": 0, "new_hire": 0}
     for d in docs:
         life = d.get("lifecycle")
         if life in s:
@@ -153,6 +153,8 @@ def _summary(docs):
             s["low_confidence"] += 1
         if d.get("backfill_back_catalog"):
             s["back_catalog"] += 1
+        else:
+            s["new_hire"] += 1
     return s
 
 
@@ -170,11 +172,14 @@ def roster():
     # Optional filters via query string.
     lifecycle = request.args.get("lifecycle") or ""
     confidence = request.args.get("confidence") or ""
+    new_only = request.args.get("new") or ""
     view = docs
     if lifecycle:
         view = [d for d in view if d.get("lifecycle") == lifecycle]
     if confidence:
         view = [d for d in view if d.get("name_confidence") == confidence]
+    if new_only:
+        view = [d for d in view if not d.get("backfill_back_catalog")]
 
     view = sorted(view, key=_sort_key)
     return render_template(
@@ -183,6 +188,7 @@ def roster():
         summary=_summary(docs),
         lifecycle=lifecycle,
         confidence=confidence,
+        new_only=new_only,
         user=current_user(),
     )
 
