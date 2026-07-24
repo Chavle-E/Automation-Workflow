@@ -43,9 +43,16 @@ SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#onboarding")
 
 # Onboarding gate (confirmed against the live People API + onboarding_poll.py):
 #   active                          -> onboarding COMPLETE   -> needs_approval
+#   onboarded                       -> onboarding COMPLETE, start date still in
+#                                      the future (Deel UI "Ready to start") ->
+#                                      needs_approval, so hires can be provisioned
+#                                      before day one (David's ask, 2026-07-24)
 #   onboarding / onboarding_overdue -> onboarding INCOMPLETE -> gated
-STATUS_DONE = {"active"}
-STATUS_ONBOARDING = {"onboarding", "onboarding_overdue"}
+#   invited                         -> contract not signed yet (Deel UI "Invited")
+#                                      -> gated; a later sync promotes them once
+#                                      they sign and the status advances
+STATUS_DONE = {"active", "onboarded"}
+STATUS_ONBOARDING = {"onboarding", "onboarding_overdue", "invited"}
 
 # Back-catalog guard (from onboarding_poll.py): a "completed onboarding" person is
 # only a genuine in-flight new hire if they started recently AND have no work email
