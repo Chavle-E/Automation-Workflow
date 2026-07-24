@@ -121,8 +121,13 @@ class OnboardingStore:
             existing = snap.to_dict()
             updates = {k: v for k, v in identity.items() if existing.get(k) != v}
 
-            # lifecycle only on first sight — never regress human/poller progress
+            # lifecycle only on first sight — never regress human/poller progress.
+            # Exception: gated -> needs_approval is the natural forward transition
+            # (their Deel status advanced since we first saw them).
             if not existing.get("lifecycle"):
+                updates["lifecycle"] = initial_lifecycle
+            elif (existing.get("lifecycle") == "gated"
+                    and initial_lifecycle == "needs_approval"):
                 updates["lifecycle"] = initial_lifecycle
             if deel_status is not None and (existing.get("accounts") or {}).get("deel", {}).get("status") != deel_status:
                 updates["accounts.deel.status"] = deel_status

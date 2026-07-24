@@ -47,12 +47,13 @@ SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#onboarding")
 #                                      the future (Deel UI "Ready to start") ->
 #                                      needs_approval, so hires can be provisioned
 #                                      before day one (David's ask, 2026-07-24)
-#   onboarding / onboarding_overdue -> onboarding INCOMPLETE -> gated
 #   invited                         -> contract not signed yet (Deel UI "Invited")
-#                                      -> gated; a later sync promotes them once
-#                                      they sign and the status advances
-STATUS_DONE = {"active", "onboarded"}
-STATUS_ONBOARDING = {"onboarding", "onboarding_overdue", "invited"}
+#                                      -> ALSO needs_approval: David wants accounts
+#                                      provisioned before the contractor signs
+#                                      (decision 2026-07-25, Edmilson case)
+#   onboarding / onboarding_overdue -> onboarding INCOMPLETE -> gated
+STATUS_DONE = {"active", "onboarded", "invited"}
+STATUS_ONBOARDING = {"onboarding", "onboarding_overdue"}
 
 # Back-catalog guard (from onboarding_poll.py): a "completed onboarding" person is
 # only a genuine in-flight new hire if they started recently AND have no work email

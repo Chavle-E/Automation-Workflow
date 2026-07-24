@@ -64,6 +64,16 @@ def notify_operators(slack: WebClient, text: str, sensitive: bool = False) -> bo
 
 
 def _post_to_channel(slack: WebClient, channel_name: str, text: str) -> bool:
+    # Post by NAME first: it works for private channels the bot is a member of
+    # (#onboarding is private, so the public-only conversations_list lookup
+    # can't see it — this is how backfill's notifications post too).
+    try:
+        slack.chat_postMessage(channel=channel_name, text=text)
+        return True
+    except SlackApiError as e:
+        if e.response.get("error") != "channel_not_found":
+            logging.error(f"Post to #{channel_name} failed: {e.response['error']}")
+            return False
     ids = _channel_ids(slack, [channel_name])
     if not ids:
         logging.error(f"Notify channel #{channel_name} not found")
