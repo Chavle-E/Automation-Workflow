@@ -10,6 +10,9 @@ must degrade to notify-a-human, never fail silently (David's decision).
 Notifications go as DMs to the operators named in ONBOARDING_NOTIFY_USERS
 (comma-separated Slack real/display names; defaults to Guga — add David's Slack
 name via the env var once confirmed). Name lookup mirrors Payroll/sync_mappings.py.
+Non-sensitive notifications are ALSO posted to ONBOARDING_NOTIFY_CHANNEL
+(default #onboarding); messages carrying credentials (the Zoho one-time
+password) are DM-only via sensitive=True.
 """
 import logging
 import os
@@ -22,6 +25,7 @@ DEFAULT_CHANNELS = ("announcements", "thirstysprout-projects-and-off-topic-stuff
 
 NOTIFY_USERS = [n.strip() for n in
                 os.getenv("ONBOARDING_NOTIFY_USERS", "Guga Chavleshvili").split(",") if n.strip()]
+NOTIFY_CHANNEL = os.getenv("ONBOARDING_NOTIFY_CHANNEL", "onboarding").strip().lstrip("#")
 
 
 def _find_user_id_by_name(slack: WebClient, name: str):
@@ -38,8 +42,9 @@ def _find_user_id_by_name(slack: WebClient, name: str):
     return None
 
 
-def notify_operators(slack: WebClient, text: str) -> bool:
-    """DM every configured operator. Returns True if at least one DM went out."""
+def notify_operators(slack: WebClient, text: str, sensitive: bool = False) -> bool:
+    """DM every configured operator; non-sensitive messages also go to the
+    notify channel. Returns True if at least one message went out."""
     sent = False
     for name in NOTIFY_USERS:
         user_id = _find_user_id_by_name(slack, name)
@@ -51,9 +56,32 @@ def notify_operators(slack: WebClient, text: str) -> bool:
             sent = True
         except SlackApiError as e:
             logging.error(f"DM to {name} failed: {e.response['error']}")
+    if not sensitive and NOTIFY_CHANNEL:
+        sent = _post_to_channel(slack, NOTIFY_CHANNEL, text) or sent
     if not sent:
         logging.error(f"NO operator notified — message was: {text}")
     return sent
+
+
+def _post_to_channel(slack: WebClient, channel_name: str, text: str) -> bool:
+    ids = _channel_ids(slack, [channel_name])
+    if not ids:
+        logging.error(f"Notify channel #{channel_name} not found")
+        return False
+    try:
+        slack.chat_postMessage(channel=ids[0], text=text)
+        return True
+    except SlackApiError as e:
+        if e.response.get("error") == "not_in_channel":
+            try:
+                slack.conversations_join(channel=ids[0])
+                slack.chat_postMessage(channel=ids[0], text=text)
+                return True
+            except SlackApiError as e2:
+                logging.error(f"Post to #{channel_name} failed after join: {e2.response['error']}")
+        else:
+            logging.error(f"Post to #{channel_name} failed: {e.response['error']}")
+    return False
 
 
 def _channel_ids(slack: WebClient, names):

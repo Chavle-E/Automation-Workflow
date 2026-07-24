@@ -145,12 +145,15 @@ steps:
     args:
       - '-c'
       - |
+        # firestore_store.py is shared with Onboarding/ — refresh the copy so the
+        # dashboard never deploys against a stale store.
+        cp Onboarding/firestore_store.py Dashboard/firestore_store.py
         cd Dashboard
         gcloud run deploy onboarding-dashboard \
           --region=europe-west1 \
           --source=. \
           --allow-unauthenticated \
-          --set-env-vars PROVISION_URL=https://europe-west1-charged-sector-427921-v5.cloudfunctions.net/provision_onboarding,REQUIRE_IAP=1 \
+          --set-env-vars PROVISION_URL=https://europe-west1-charged-sector-427921-v5.cloudfunctions.net/provision_onboarding,REQUIRE_IAP=1,BACKFILL_URL=https://europe-west1-charged-sector-427921-v5.cloudfunctions.net/backfill_onboarding \
           --timeout=3600s \
           --quiet
 
@@ -268,4 +271,5 @@ steps:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+
 timeout: 1800s

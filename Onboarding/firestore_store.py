@@ -141,8 +141,8 @@ class OnboardingStore:
         logging.info(f"upsert {person_id}: {result}")
         return result
 
-    def request_provision(self, person_id, *, by: str, billable_rate: float,
-                          personal_email: str, harvest_project_id,
+    def request_provision(self, person_id, *, by: str, billable_rate: Optional[float],
+                          personal_email: str, harvest_project_id=None,
                           harvest_project_name: str = "",
                           cost_rate: Optional[float] = None) -> Dict:
         """
@@ -157,11 +157,15 @@ class OnboardingStore:
           - doc must exist and be lifecycle == "needs_approval"
           - back-catalog docs (pre-existing staff) are never provisionable
         """
+        # harvest_project_id=None means "No Harvest": the Harvest step is skipped
+        # (time tracked outside Harvest), so billable_rate may be None too.
+        if harvest_project_id and billable_rate is None:
+            raise ValueError("billable_rate is required when a Harvest project is set")
         request_doc = {
-            "billable_rate": float(billable_rate),
+            "billable_rate": float(billable_rate) if billable_rate is not None else None,
             "cost_rate": float(cost_rate) if cost_rate is not None else None,
             "personal_email": personal_email,
-            "harvest_project_id": str(harvest_project_id),
+            "harvest_project_id": str(harvest_project_id) if harvest_project_id else None,
             "harvest_project_name": harvest_project_name,
             "by": by,
             "at": _now(),
@@ -191,8 +195,10 @@ class OnboardingStore:
         logging.info(f"request_provision {person_id}: approved by {by}")
         return request_doc
 
-    # All three invites out -> the hire is just waiting on sign-ins.
-    _INVITE_FIELDS = (("zoho", "created_at"), ("slack", "invited_at"), ("harvest", "invited_at"))
+    # All three invites out -> the hire is just waiting on sign-ins. Harvest counts
+    # as done when invited OR explicitly skipped (approved with "No Harvest").
+    _INVITE_FIELDS = (("zoho", ("created_at",)), ("slack", ("invited_at",)),
+                      ("harvest", ("invited_at", "skipped_at")))
 
     def record_account_event(self, person_id, tool: str, fields: Dict, *,
                              action: str, by: str = "system") -> str:
@@ -225,7 +231,8 @@ class OnboardingStore:
             merged = dict(accounts)
             merged[tool] = {**current, **fields}
             if (doc.get("lifecycle") == "provisioning"
-                    and all((merged.get(t) or {}).get(f) for t, f in self._INVITE_FIELDS)):
+                    and all(any((merged.get(t) or {}).get(f) for f in fields)
+                            for t, fields in self._INVITE_FIELDS)):
                 updates["lifecycle"] = "not_signed_in"
 
             audit = doc.get("audit", [])

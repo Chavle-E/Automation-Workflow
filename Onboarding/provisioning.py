@@ -74,16 +74,16 @@ ZOHO_EXISTING_MESSAGE = (
 )
 
 ZOHO_INSTRUCTIONS = (
-    “:busts_in_silhouette: *Zoho user needed for {name}* (approved by {approver})\n”
-    “1. Zoho admin (`hello@thirstysprout.ai`) → add user *{work_email}*, Role = *User* (never Admin)\n”
-    “2. Auto-generate the password (≥8, upper+lower+number+special)\n”
-    “3. CHECK 'send credentials via email' → personal email *{personal_email}*\n”
-    “4. CHECK 'force password change on first login'\n”
-    “5. Send to BOTH {work_email} and {personal_email}:\n”
-    “   • Onboarding guide\n”
-    “   • Company guide: https://help.thirstysprout.com/\n”
-    “Then open the dashboard → this hire → *Mark Zoho created* (that releases the “
-    “Slack + Harvest invites, which go to the work email).”
+    ":busts_in_silhouette: *Zoho user needed for {name}* (approved by {approver})\n"
+    "1. Zoho admin (`hello@thirstysprout.ai`) → add user *{work_email}*, Role = *User* (never Admin)\n"
+    "2. Auto-generate the password (≥8, upper+lower+number+special)\n"
+    "3. CHECK 'send credentials via email' → personal email *{personal_email}*\n"
+    "4. CHECK 'force password change on first login'\n"
+    "5. Send to BOTH {work_email} and {personal_email}:\n"
+    "   • Onboarding guide\n"
+    "   • Company guide: https://help.thirstysprout.com/\n"
+    "Then open the dashboard → this hire → *Mark Zoho created* (that releases the "
+    "Slack + Harvest invites, which go to the work email)."
 )
 
 SEAT_CAP_MESSAGE = (
@@ -162,9 +162,12 @@ def provision_one(store: OnboardingStore, slack: WebClient, harvest: HarvestClie
                     store.record_account_event(
                         person_id, "zoho", {"created_at": _now(), "mode": "api"},
                         action="zoho_created_api")
+                    # sensitive: carries the one-time password — DM-only, never
+                    # the notify channel.
                     notify_operators(slack, ZOHO_CREATED_MESSAGE.format(
                         name=name, approver=req.get("by", "?"), work_email=work_email,
-                        personal_email=req.get("personal_email", "?"), password=password))
+                        personal_email=req.get("personal_email", "?"), password=password),
+                        sensitive=True)
                     outcomes["zoho"] = "created via API"
                 created = True
             except Exception as e:  # fall back to the human playbook DM
@@ -213,7 +216,13 @@ def provision_one(store: OnboardingStore, slack: WebClient, harvest: HarvestClie
 
     # --- 3. Harvest contractor + project ---------------------------------------
     harvest_acct = _acct(doc, "harvest")
-    if harvest_acct.get("invited_at"):
+    if not req.get("harvest_project_id"):
+        # Approved with "No Harvest" — time is tracked outside Harvest.
+        if not harvest_acct.get("skipped_at"):
+            store.record_account_event(person_id, "harvest", {"skipped_at": _now()},
+                                       action="harvest_skipped")
+        outcomes["harvest"] = "skipped (no Harvest project — tracked outside Harvest)"
+    elif harvest_acct.get("invited_at"):
         outcomes["harvest"] = "already invited"
     else:
         first, last = _split_name(doc)

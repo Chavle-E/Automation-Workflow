@@ -2,6 +2,12 @@
 {% block title %}Roster{% endblock %}
 {% block content %}
 
+<form method="post" action="{{ url_for('sync_deel') }}" class="syncbar"
+      onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Syncing… (takes ~20s)';">
+  <button type="submit" class="btn">↻ Sync Deel now</button>
+  <span class="synchint">pulls the latest contracts from Deel immediately — same as the daily 07:00 scrape</span>
+</form>
+
 <section class="cards">
   <a class="card" href="{{ url_for('roster') }}">
     <div class="num">{{ summary.total }}</div><div class="lbl">total hires</div>

@@ -40,8 +40,8 @@
     once “Zoho created” is marked here.
   </p>
   <form method="post" action="{{ url_for('approve', person_id=doc.person_id) }}" class="form-grid">
-    <label>Billable rate (USD/h, required)
-      <input type="number" name="billable_rate" step="0.01" min="1" required>
+    <label>Billable rate (USD/h, required unless “No Harvest”)
+      <input type="number" name="billable_rate" step="0.01" min="1">
     </label>
     <label>Cost rate (optional, from Deel payment rate)
       <input type="number" name="cost_rate" step="0.01" min="0">
@@ -53,13 +53,14 @@
       {% if projects %}
       <select name="harvest_project_id" required>
         <option value="" disabled selected>choose a project…</option>
+        <option value="__none__">— No Harvest (time tracked outside Harvest) —</option>
         {% for p in projects %}
         <option value="{{ p.id }}">{{ p.client }} — {{ p.name }}</option>
         {% endfor %}
       </select>
       {% else %}
       <input type="text" name="harvest_project_id" required
-             placeholder="Harvest project ID (project list unavailable)">
+             placeholder="Harvest project ID, or 'none' to skip Harvest">
       {% endif %}
     </label>
     <button type="submit" class="btn primary"
@@ -84,7 +85,7 @@
     <dt>billable rate</dt><dd>{{ doc.provision_request.billable_rate }}</dd>
     <dt>cost rate</dt><dd>{{ doc.provision_request.cost_rate if doc.provision_request.cost_rate is not none else '—' }}</dd>
     <dt>personal email</dt><dd class="mono">{{ doc.provision_request.personal_email }}</dd>
-    <dt>harvest project</dt><dd>{{ doc.provision_request.harvest_project_name or doc.provision_request.harvest_project_id }}</dd>
+    <dt>harvest project</dt><dd>{{ doc.provision_request.harvest_project_name or doc.provision_request.harvest_project_id or 'No Harvest (skipped)' }}</dd>
   </dl>
   {% if doc.lifecycle == 'provisioning' %}
   <form method="post" action="{{ url_for('retry', person_id=doc.person_id) }}" class="inline-form">
@@ -107,7 +108,7 @@
       </dl>
       {% if doc.lifecycle in ('provisioning', 'not_signed_in') %}
         {% for step, spec in manual_steps.items() %}
-          {% if spec[0] == name and not acct.get(spec[1]) %}
+          {% if spec[0] == name and not acct.get(spec[1]) and not (name == 'harvest' and acct.get('skipped_at')) %}
           <form method="post" action="{{ url_for('mark_step', person_id=doc.person_id, step=step) }}" class="inline-form">
             <button type="submit" class="btn small-btn"
                     onclick="return confirm('Record that this was done manually?')">

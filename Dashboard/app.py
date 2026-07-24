@@ -50,6 +50,7 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.urandom(32)
 
 REQUIRE_IAP = os.getenv("REQUIRE_IAP") in ("1", "true", "yes")
 PROVISION_URL = os.getenv("PROVISION_URL", "")
+BACKFILL_URL = os.getenv("BACKFILL_URL", "")
 
 # Order the roster surfaces lifecycles in: things needing attention first.
 LIFECYCLE_ORDER = ["needs_approval", "gated", "provisioning", "not_signed_in",
@@ -215,12 +216,25 @@ def hire(person_id):
 def approve(person_id):
     form = request.form
     errors = []
-    try:
-        billable_rate = float(form.get("billable_rate", ""))
-        if billable_rate <= 0:
-            errors.append("billable rate must be > 0")
-    except ValueError:
-        billable_rate = None
+
+    # "No Harvest" = time is tracked outside Harvest; the Harvest step is skipped
+    # entirely, so the rates (only used for the Harvest contractor) become optional.
+    project_id = form.get("harvest_project_id", "").strip()
+    skip_harvest = project_id.lower() in ("__none__", "none")
+    if skip_harvest:
+        project_id = None
+    elif not project_id:
+        errors.append("a Harvest project is required (or choose “No Harvest”)")
+
+    billable_rate = None
+    if form.get("billable_rate", "").strip():
+        try:
+            billable_rate = float(form["billable_rate"])
+            if billable_rate <= 0:
+                errors.append("billable rate must be > 0")
+        except ValueError:
+            errors.append("billable rate must be a number")
+    elif not skip_harvest:
         errors.append("billable rate is required (a number)")
 
     cost_rate = None
@@ -233,10 +247,6 @@ def approve(person_id):
     personal_email = form.get("personal_email", "").strip()
     if "@" not in personal_email:
         errors.append("personal email is required (Zoho credentials are sent there)")
-
-    project_id = form.get("harvest_project_id", "").strip()
-    if not project_id:
-        errors.append("a Harvest project is required")
 
     if errors:
         flash("Not approved: " + "; ".join(errors), "error")
@@ -291,6 +301,29 @@ def retry(person_id):
     else:
         flash(f"Provisioning function not reached: {data}", "error")
     return redirect(url_for("hire", person_id=person_id))
+
+
+@app.route("/sync-deel", methods=["POST"])
+def sync_deel():
+    """
+    Manual "pull from Deel now" — invokes the same backfill_onboarding function
+    the 07:00 scheduler runs, for when a hire can't wait for the morning scrape.
+    Idempotent, so clicking it twice is harmless.
+    """
+    if not BACKFILL_URL:
+        flash("Deel sync is not configured (BACKFILL_URL missing).", "error")
+        return redirect(url_for("roster"))
+    try:
+        headers = {"Authorization": f"Bearer {_id_token(BACKFILL_URL)}"}
+        resp = requests.post(BACKFILL_URL, headers=headers, timeout=110)
+        if resp.status_code == 200:
+            flash(f"Deel sync finished — {resp.text[:400]}", "ok")
+        else:
+            flash(f"Deel sync failed: HTTP {resp.status_code} {resp.text[:200]}", "error")
+    except Exception as e:
+        logging.warning(f"backfill function unreachable: {e}")
+        flash(f"Deel sync failed: {e} — the 07:00 daily scrape will still run.", "error")
+    return redirect(url_for("roster"))
 
 
 @app.route("/healthz")
