@@ -54,6 +54,10 @@ SLACK_TOKEN = (os.getenv("SLACK_TOKEN") or "").strip()
 ZOHO_CLIENT_ID = (os.getenv("ZOHO_CLIENT_ID") or "").strip()
 ZOHO_CLIENT_SECRET = (os.getenv("ZOHO_CLIENT_SECRET") or "").strip()
 ZOHO_REFRESH_TOKEN = (os.getenv("ZOHO_REFRESH_TOKEN") or "").strip()
+# Standing workspace invite link (Slack admin UI; signups restricted to the
+# @thirstysprout.ai domain). When set, the Slack "invite" is an email to the
+# work inbox instead of the admin API / manual-DM dance.
+SLACK_INVITE_LINK = (os.getenv("SLACK_INVITE_LINK") or "").strip()
 
 ZOHO_CREATED_MESSAGE = (
     ":white_check_mark: *Zoho mailbox created for {name}*: *{work_email}* "
@@ -109,6 +113,44 @@ HARVEST_COMPLETED_MESSAGE = (
     "Rate: ${rate}/hr, Project: {project}, Seat assignment complete"
 )
 
+CREDS_EMAILED_MESSAGE = (
+    ":white_check_mark: *Zoho mailbox created for {name}*: *{work_email}* "
+    "(approved by {approver})\n"
+    "Credentials + company guide emailed to *{personal_email}*; the Slack invite "
+    "goes to the work inbox next. No operator action needed."
+)
+
+SLACK_EMAILED_MESSAGE = (
+    ":email: *Slack invite emailed* to *{name}*'s work inbox ({work_email})."
+)
+
+CREDENTIALS_EMAIL_SUBJECT = "Your ThirstySprout work email is ready"
+CREDENTIALS_EMAIL_BODY = (
+    "Hi {first_name},\n\n"
+    "Welcome to ThirstySprout! Your work email account is ready:\n\n"
+    "    Email:    {work_email}\n"
+    "    Password: {password}\n\n"
+    "This is a one-time password - you'll be asked to set your own the first time\n"
+    "you log in at https://mail.zoho.com\n\n"
+    "Next steps:\n"
+    "  1. Log into your work inbox - a Slack invitation is waiting for you there.\n"
+    "     Make sure you join Slack with your work email address.\n"
+    "  2. Read the company guide: https://help.thirstysprout.com/\n\n"
+    "If anything doesn't work, just reply to this email.\n\n"
+    "- ThirstySprout"
+)
+
+SLACK_EMAIL_SUBJECT = "Join the ThirstySprout Slack"
+SLACK_EMAIL_BODY = (
+    "Hi {first_name},\n\n"
+    "Join our Slack workspace here:\n\n"
+    "    {invite_link}\n\n"
+    "Important: sign up with this work email address ({work_email}) - the\n"
+    "workspace only accepts @thirstysprout.ai addresses.\n\n"
+    "See you there!\n"
+    "- ThirstySprout"
+)
+
 
 def _split_name(doc):
     """Legal name = Deel personal details (David's rule); doc stores the joined string."""
@@ -155,20 +197,40 @@ def provision_one(store: OnboardingStore, slack: WebClient, harvest: HarvestClie
                         action="zoho_found_existing")
                     outcomes["zoho"] = "already existed in Zoho (marked created)"
                 else:
-                    # The one-time password lives ONLY in the operator DM — never
-                    # in Firestore or logs. Forced change at first login.
+                    # The one-time password is never stored in Firestore or logs.
+                    # Forced change at first login.
                     password = generate_password()
                     zoho.create_user(work_email, first, last, password)
                     store.record_account_event(
                         person_id, "zoho", {"created_at": _now(), "mode": "api"},
                         action="zoho_created_api")
-                    # sensitive: carries the one-time password — DM-only, never
-                    # the notify channel.
-                    notify_operators(slack, ZOHO_CREATED_MESSAGE.format(
-                        name=name, approver=req.get("by", "?"), work_email=work_email,
-                        personal_email=req.get("personal_email", "?"), password=password),
-                        sensitive=True)
-                    outcomes["zoho"] = "created via API"
+                    personal_email = req.get("personal_email", "")
+                    # Email the credentials straight to the personal inbox. On any
+                    # send failure, fall back to DMing the operator the password.
+                    emailed = False
+                    try:
+                        zoho.send_mail(
+                            personal_email, CREDENTIALS_EMAIL_SUBJECT,
+                            CREDENTIALS_EMAIL_BODY.format(
+                                first_name=first, work_email=work_email, password=password))
+                        emailed = True
+                    except Exception as e:
+                        logging.error(f"Credentials email failed for {person_id}: {e}")
+                    if emailed:
+                        store.record_account_event(
+                            person_id, "zoho", {"credentials_emailed_at": _now()},
+                            action="zoho_credentials_emailed")
+                        notify_operators(slack, CREDS_EMAILED_MESSAGE.format(
+                            name=name, approver=req.get("by", "?"), work_email=work_email,
+                            personal_email=personal_email))
+                        outcomes["zoho"] = "created via API + credentials emailed"
+                    else:
+                        # sensitive: carries the one-time password — DM-only.
+                        notify_operators(slack, ZOHO_CREATED_MESSAGE.format(
+                            name=name, approver=req.get("by", "?"), work_email=work_email,
+                            personal_email=personal_email, password=password),
+                            sensitive=True)
+                        outcomes["zoho"] = "created via API (email failed — password DM'd)"
                 created = True
             except Exception as e:  # fall back to the human playbook DM
                 logging.error(f"Zoho API provisioning failed for {person_id}: {e}")
@@ -191,10 +253,38 @@ def provision_one(store: OnboardingStore, slack: WebClient, harvest: HarvestClie
 
     # --- 2. Slack invite (work email) ------------------------------------------
     slack_acct = _acct(doc, "slack")
+    first, _last = _split_name(doc)
     if slack_acct.get("invited_at"):
         outcomes["slack"] = "already invited"
     elif slack_acct.get("manual_requested_at"):
         outcomes["slack"] = "waiting for manual invite"
+    elif SLACK_INVITE_LINK and zoho is not None:
+        # Preferred path: email the standing invite link to the work inbox (the
+        # mailbox exists by now). The hire self-joins with their work address.
+        try:
+            zoho.send_mail(
+                work_email, SLACK_EMAIL_SUBJECT,
+                SLACK_EMAIL_BODY.format(
+                    first_name=first, invite_link=SLACK_INVITE_LINK, work_email=work_email))
+            store.record_account_event(
+                person_id, "slack",
+                {"invited_at": _now(), "invite_mode": "email_link"},
+                action="slack_invite_emailed")
+            try:
+                slack.chat_postMessage(channel="onboarding",
+                    text=SLACK_EMAILED_MESSAGE.format(name=name, work_email=work_email),
+                    mrkdwn=True)
+            except Exception as e:
+                logging.warning(f"Failed to post Slack notification to #onboarding: {e}")
+            outcomes["slack"] = "invite link emailed to work inbox"
+        except Exception as e:
+            logging.error(f"Slack invite email failed for {person_id}: {e}")
+            notify_operators(slack, SLACK_MANUAL_MESSAGE.format(
+                name=name, work_email=work_email, detail=f"invite email failed: {e}"))
+            store.record_account_event(person_id, "slack",
+                                       {"manual_requested_at": _now(), "invite_mode": "manual"},
+                                       action="slack_manual_requested")
+            outcomes["slack"] = "manual invite requested (invite email failed)"
     else:
         invited, detail = invite_to_workspace(slack, work_email)
         if invited:

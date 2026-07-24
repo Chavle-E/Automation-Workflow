@@ -1,10 +1,12 @@
 """
-Minimal Zoho Mail admin client for provisioning (create the work mailbox).
+Minimal Zoho Mail admin client for provisioning (create the work mailbox and
+send the onboarding emails from hello@).
 
 Auth is a Self Client created by the org admin (hello@thirstysprout.ai) at
 api-console.zoho.com: a long-lived refresh token (Secret Manager) is exchanged
-for a ~1h access token on demand. Scope is ZohoMail.organization.accounts.ALL —
-enough to list/create org mailboxes, deliberately nothing wider.
+for a ~1h access token on demand. Scopes: ZohoMail.organization.accounts.ALL
+(list/create org mailboxes) + ZohoMail.accounts.READ and
+ZohoMail.messages.CREATE (send mail as hello@, refresh token v2, 2026-07-25).
 
 US data center (accounts.zoho.com / mail.zoho.com — where the org lives).
 The documented create endpoint is /api/organization/{zoid}/accounts, but the
@@ -90,6 +92,35 @@ class ZohoMailClient:
             if email in addresses:
                 return user
         return None
+
+    def _sender(self):
+        """The Self Client's own mailbox (hello@) — accountId + address, cached."""
+        if getattr(self, "_sender_cache", None):
+            return self._sender_cache
+        resp = requests.get(f"{MAIL_BASE}/api/accounts", headers=self._headers(), timeout=30)
+        resp.raise_for_status()
+        accounts = resp.json().get("data") or []
+        if not accounts:
+            raise RuntimeError("Zoho: no mailbox on the API user (cannot send)")
+        self._sender_cache = (accounts[0]["accountId"], accounts[0]["primaryEmailAddress"])
+        return self._sender_cache
+
+    def send_mail(self, to_address: str, subject: str, content: str):
+        """Send a plaintext email from hello@. Raises on failure — callers fall
+        back to the notify-a-human DM, mirroring create_user."""
+        account_id, from_address = self._sender()
+        body = {
+            "fromAddress": from_address,
+            "toAddress": to_address,
+            "subject": subject,
+            "content": content,
+            "mailFormat": "plaintext",
+        }
+        resp = requests.post(f"{MAIL_BASE}/api/accounts/{account_id}/messages",
+                             headers=self._headers(), json=body, timeout=60)
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"Zoho send_mail failed ({resp.status_code}): {resp.text[:300]}")
+        return True
 
     def create_user(self, email: str, first_name: str, last_name: str, password: str):
         """
