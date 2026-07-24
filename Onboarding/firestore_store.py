@@ -251,6 +251,33 @@ class OnboardingStore:
         logging.info(f"record_account_event {person_id} {tool} {action}: {result}")
         return result
 
+    def advance_to_active(self, person_id, by: str = "activation_poller") -> bool:
+        """
+        not_signed_in -> active, transactionally. Returns True only on the
+        transition that actually flips it (so the caller notifies exactly once);
+        False if it was already active or isn't ready. Never regresses other
+        lifecycles.
+        """
+        ref = self._ref(person_id)
+
+        @firestore.transactional
+        def _txn(txn) -> bool:
+            snap = ref.get(transaction=txn)
+            if not snap.exists:
+                raise KeyError(f"onboarding doc not found for person_id={person_id}")
+            if snap.to_dict().get("lifecycle") != "not_signed_in":
+                return False
+            now = _now()
+            audit = snap.to_dict().get("audit", [])
+            audit.append({"action": "activated", "by": by, "at": now})
+            txn.update(ref, {"lifecycle": "active", "audit": audit, "updated_at": now})
+            return True
+
+        advanced = _txn(self.client.transaction())
+        if advanced:
+            logging.info(f"advance_to_active {person_id}: now active")
+        return advanced
+
     def append_audit(self, person_id, action: str, by: str = "system") -> Dict:
         """Append an audit entry transactionally. Raises KeyError if doc missing."""
         entry = {"action": action, "by": by, "at": _now()}

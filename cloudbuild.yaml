@@ -139,6 +139,31 @@ steps:
           --region=europe-west1 \
           --member="serviceAccount:164865114626-compute@developer.gserviceaccount.com" --quiet
 
+  # 6b-2. Deploy Activation Poller (detects contractor logins/joins, pings
+  #       #onboarding + operators, advances not_signed_in -> active). PRIVATE —
+  #       invoked by the scheduler via OIDC (compute SA). No Harvest (login not
+  #       exposed by its API), so no Harvest secrets.
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        gcloud functions deploy poll_activations \
+          --region europe-west1 \
+          --runtime python311 \
+          --trigger-http \
+          --no-allow-unauthenticated \
+          --clear-env-vars \
+          --set-secrets SLACK_TOKEN=slack-token:latest,ZOHO_CLIENT_ID=zoho-client-id:latest,ZOHO_CLIENT_SECRET=zoho-client-secret:latest,ZOHO_REFRESH_TOKEN=zoho-refresh-token:latest \
+          --entry-point poll_activations \
+          --set-build-env-vars GOOGLE_FUNCTION_SOURCE=activation_poll.py \
+          --source=Onboarding \
+          --timeout=300s
+        gcloud functions add-invoker-policy-binding poll_activations \
+          --region=europe-west1 \
+          --member="serviceAccount:164865114626-compute@developer.gserviceaccount.com" --quiet
+
   # 6c. Deploy Onboarding Dashboard (Cloud Run, IAP-protected)
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
@@ -181,12 +206,13 @@ steps:
         MAPPING_SYNC_URL=$(geturl sync_user_mappings)
         BACKFILL_URL=$(geturl backfill_onboarding)
         PROVISION_URL=$(geturl provision_onboarding)
+        ACTIVATION_URL=$(geturl poll_activations)
 
         # Scheduler auth: the org policy blocks public (allUsers) functions, so every
         # job must invoke its target with an OIDC token. Grant the scheduler SA the
         # invoker role on each function (idempotent), then pass --oidc-* on each job.
         SCHED_SA=164865114626-compute@developer.gserviceaccount.com
-        for FN in process_payroll_http send_timesheet_reminders create_invoices_http backfill_onboarding; do
+        for FN in process_payroll_http send_timesheet_reminders create_invoices_http backfill_onboarding provision_onboarding poll_activations; do
           gcloud functions add-iam-policy-binding $$FN --region=europe-west1 --member="serviceAccount:$$SCHED_SA" --role="roles/cloudfunctions.invoker" --quiet || true
         done
         # sync_user_mappings is gen2 (Cloud Run) — use run.invoker role
@@ -269,8 +295,25 @@ steps:
           --oidc-token-audience=$$PROVISION_URL \
           --description="Retry pending onboarding provisioning steps (idempotent sweep)"
 
+        # Schedule 7: Activation poll - every 30 min, detect contractor logins
+        # (Zoho) + Slack joins for hires in not_signed_in, ping #onboarding +
+        # operators, and advance them to active. Idempotent; no-op when none pending.
+        gcloud scheduler jobs delete onboarding-activation-poll --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http onboarding-activation-poll \
+          --location=europe-west1 \
+          --schedule="*/30 * * * *" \
+          --uri=$$ACTIVATION_URL \
+          --http-method=POST \
+          --time-zone="Asia/Tbilisi" \
+          --oidc-service-account-email=$$SCHED_SA \
+          --oidc-token-audience=$$ACTIVATION_URL \
+          --description="Detect onboarding activations (Zoho login + Slack join) and advance to active"
+
 options:
   logging: CLOUD_LOGGING_ONLY
+
+
+
 
 
 
