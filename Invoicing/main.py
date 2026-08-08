@@ -26,12 +26,12 @@ headers = {
     "Content-Type": "application/json"
 }
 
-# Define special billing preferences
+# Define special billing preferences. Due dates / payment terms are NOT set here:
+# invoices are created without them so Harvest applies each client's own net terms.
 SPECIAL_BILLING_CLIENTS = {
     '13363422': {
         'project_ids': [35848992],  # Add specific project IDs for this client
         'billing_day': 16,
-        'due_date_offset': 5  # Due date is 5 days after billing day
     }
     # Add more special billing clients here if needed
 }
@@ -46,14 +46,12 @@ def get_billing_dates(client_id, today):
         if today.day == billing_day:
             end_date = today.shift(days=-1)
             start_date = end_date.replace(day=billing_day).shift(months=-1)
-            due_date = today.shift(days=special_billing['due_date_offset'])
         else:
             # If it's not the billing day, return the previous period
             end_date = today.replace(day=billing_day).shift(days=-1)
             start_date = end_date.replace(day=billing_day).shift(months=-1)
-            due_date = end_date.shift(days=special_billing['due_date_offset'])
-        logging.info(f"Special billing dates for client {client_id}: {start_date} to {end_date}, due {due_date}")
-        return start_date, end_date, due_date, "custom"
+        logging.info(f"Special billing dates for client {client_id}: {start_date} to {end_date}")
+        return start_date, end_date
     else:
         if today.day <= 15:
             # For the first half of the month, bill for the previous month's second half
@@ -63,8 +61,8 @@ def get_billing_dates(client_id, today):
             # For the second half of the month, bill for the current month's first half
             end_date = today.replace(day=15)
             start_date = end_date.replace(day=1)
-        logging.info(f"Regular billing dates for client {client_id}: {start_date} to {end_date}, due upon receipt")
-        return start_date, end_date, end_date, "upon receipt"
+        logging.info(f"Regular billing dates for client {client_id}: {start_date} to {end_date}")
+        return start_date, end_date
 
 
 def get_client_ids():
@@ -117,14 +115,16 @@ def check_time_entries_exist(project_id, start_date, end_date):
         return False
 
 
-def create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term):
-    """Function to create invoices in Harvest."""
+def create_invoice(client_id, project_id, start_date, end_date):
+    """
+    Create an invoice in Harvest. payment_term/due_date are deliberately omitted
+    so Harvest falls back to the net terms configured on the client itself
+    (David's request, 2026-07: the automation must not override client net terms).
+    """
     invoice_url = "https://api.harvestapp.com/v2/invoices"
     payload = {
         "client_id": client_id,
         "notes": "Thank you for choosing ThirstySprout!",
-        "payment_term": payment_term,
-        "due_date": due_date.format("YYYY-MM-DD"),
         "line_items_import": {
             "project_ids": [project_id],
             "time": {"summary_type": "people", "from": start_date.format("YYYY-MM-DD"),
@@ -153,7 +153,7 @@ def process_invoices():
     today = arrow.now()
 
     for client_id in client_ids:
-        start_date, end_date, due_date, payment_term = get_billing_dates(client_id, today)
+        start_date, end_date = get_billing_dates(client_id, today)
         logging.info(f"Processing billing for client {client_id} from {start_date} to {end_date}")
 
         special_billing = SPECIAL_BILLING_CLIENTS.get(str(client_id))
@@ -161,7 +161,7 @@ def process_invoices():
             logging.info(f"Client {client_id} has special billing configuration")
             for project_id in special_billing['project_ids']:
                 if check_time_entries_exist(project_id, start_date, end_date):
-                    create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
+                    create_invoice(client_id, project_id, start_date, end_date)
                 else:
                     logging.warning(
                         f"No time entries found for special billing client {client_id}, project {project_id}")
@@ -171,7 +171,7 @@ def process_invoices():
                 if associated_client_id == client_id:
                     if check_time_entries_exist(project_id, start_date, end_date):
                         if project_id not in [36506766, 34951635, 39801484]:
-                            create_invoice(client_id, project_id, start_date, end_date, due_date, payment_term)
+                            create_invoice(client_id, project_id, start_date, end_date)
                         else:
                             logging.info(f"Skipping invoice creation for excluded project {project_id}")
                     else:
