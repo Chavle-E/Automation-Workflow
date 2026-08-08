@@ -26,9 +26,11 @@ audit identity falls back to the email claim of the caller's own identity token 
 Cloud Run IAM has already verified it upstream.
 """
 import base64
+import datetime
 import json
 import logging
 import os
+import re
 
 import requests
 from flask import Flask, render_template, abort, request, redirect, url_for, flash
@@ -190,6 +192,54 @@ def roster():
         lifecycle=lifecycle,
         confidence=confidence,
         new_only=new_only,
+        user=current_user(),
+    )
+
+
+def _month_bounds(today, months_back=0):
+    """(first, last) of the month `months_back` months before today's month."""
+    year, month = today.year, today.month
+    for _ in range(months_back):
+        year, month = (year - 1, 12) if month == 1 else (year, month - 1)
+    first = datetime.date(year, month, 1)
+    next_first = datetime.date(year + 1, 1, 1) if month == 12 else datetime.date(year, month + 1, 1)
+    return first, next_first - datetime.timedelta(days=1)
+
+
+@app.route("/finance")
+def finance():
+    """
+    Per-contractor profit for a period: cost rate vs bill rate vs hours worked,
+    aggregated from Harvest time entries by the provisioning function (the
+    dashboard itself stays secret-free). Defaults to the current month to date.
+    """
+    today = datetime.date.today()
+    default_from, _ = _month_bounds(today)
+    date_from = request.args.get("from") or default_from.isoformat()
+    date_to = request.args.get("to") or today.isoformat()
+    if not (re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_from)
+            and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_to)):
+        flash("Dates must be YYYY-MM-DD.", "error")
+        return redirect(url_for("finance"))
+
+    ok, data = call_provisioning(
+        params={"report": "finance", "from": date_from, "to": date_to}, timeout=120)
+    report = data.get("report") if ok else None
+    if not ok:
+        flash(f"Could not load the finance report: {data}", "error")
+
+    last_from, last_to = _month_bounds(today, months_back=1)
+    presets = [
+        ("This month", default_from.isoformat(), today.isoformat()),
+        ("Last month", last_from.isoformat(), last_to.isoformat()),
+        ("Year to date", datetime.date(today.year, 1, 1).isoformat(), today.isoformat()),
+    ]
+    return render_template(
+        "finance.html",
+        report=report,
+        date_from=date_from,
+        date_to=date_to,
+        presets=presets,
         user=current_user(),
     )
 

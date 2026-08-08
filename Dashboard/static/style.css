@@ -112,3 +112,30 @@ a:hover { text-decoration: underline; }
 /* manual Deel sync bar */
 .syncbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
 .syncbar .synchint { color: var(--muted); font-size: 13px; }
+
+/* topbar nav */
+.nav { display: flex; gap: 18px; margin-left: 28px; margin-right: auto; }
+.nav a { color: var(--muted); font-size: 14px; }
+.nav a.active { color: var(--text); font-weight: 600; }
+.nav a:hover { color: var(--text); text-decoration: none; }
+
+/* finance page */
+.page-title { font-size: 22px; margin: 0 0 16px; }
+.rangebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.rangebar label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.rangebar input[type="date"] {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--text); padding: 6px 10px; font: inherit; color-scheme: dark;
+}
+.rangebar .presets { display: flex; gap: 8px; margin-left: 8px; }
+.preset {
+  font-size: 12px; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted);
+}
+.preset:hover { border-color: var(--accent); text-decoration: none; }
+.preset.active { color: var(--text); border-color: var(--accent); }
+.grid th.r, .grid td.r { text-align: right; }
+.pos { color: var(--green); }
+.neg { color: var(--red); }
+.totals td { border-top: 2px solid var(--line); font-weight: 600; }
+.projcell { max-width: 220px; color: var(--muted); }

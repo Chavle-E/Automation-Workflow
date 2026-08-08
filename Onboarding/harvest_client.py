@@ -101,6 +101,13 @@ class HarvestClient:
         resp.raise_for_status()
         return resp.json()
 
+    def list_time_entries(self, date_from: str, date_to: str):
+        """All time entries in [date_from, date_to] (YYYY-MM-DD, inclusive).
+        Each entry carries hours, billable, billable_rate and cost_rate — enough
+        to compute per-contractor revenue/cost without extra requests."""
+        return self._get_paginated("/time_entries", "time_entries",
+                                   {"from": date_from, "to": date_to})
+
     def seat_usage(self):
         """(active_users, note) — for flagging empty seats; Harvest exposes no
         plan-size endpoint, so the cap itself only surfaces via the 422 on create."""

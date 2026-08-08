@@ -9,6 +9,10 @@
 <body>
   <header class="topbar">
     <a class="brand" href="{{ url_for('roster') }}">Onboarding <span>dashboard</span></a>
+    <nav class="nav">
+      <a href="{{ url_for('roster') }}" class="{{ 'active' if request.endpoint == 'roster' }}">Roster</a>
+      <a href="{{ url_for('finance') }}" class="{{ 'active' if request.endpoint == 'finance' }}">Finance</a>
+    </nav>
     <div class="who">
       {% if user %}<span class="user">{{ user }}</span>{% endif %}
     </div>

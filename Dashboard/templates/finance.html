@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Finance{% endblock %}
+{% block content %}
+
+<h1 class="page-title">Contractor profitability</h1>
+
+<form method="get" action="{{ url_for('finance') }}" class="rangebar">
+  <label>From <input type="date" name="from" value="{{ date_from }}"></label>
+  <label>To <input type="date" name="to" value="{{ date_to }}"></label>
+  <button type="submit" class="btn">Apply</button>
+  <span class="presets">
+    {% for label, pfrom, pto in presets %}
+      <a class="preset {{ 'active' if pfrom == date_from and pto == date_to }}"
+         href="{{ url_for('finance', **{'from': pfrom, 'to': pto}) }}">{{ label }}</a>
+    {% endfor %}
+  </span>
+</form>
+
+{% if report %}
+<section class="cards">
+  <div class="card">
+    <div class="num">${{ '{:,.0f}'.format(report.totals.revenue) }}</div>
+    <div class="lbl">billed (revenue)</div>
+  </div>
+  <div class="card">
+    <div class="num">${{ '{:,.0f}'.format(report.totals.cost) }}</div>
+    <div class="lbl">contractor cost</div>
+  </div>
+  <div class="card">
+    <div class="num {{ 'pos' if report.totals.profit >= 0 else 'neg' }}">
+      {{ '−' if report.totals.profit < 0 }}${{ '{:,.0f}'.format(report.totals.profit|abs) }}
+    </div>
+    <div class="lbl">profit</div>
+  </div>
+  <div class="card">
+    <div class="num">{{ '{:.0%}'.format(report.totals.margin) if report.totals.margin is not none else '—' }}</div>
+    <div class="lbl">margin</div>
+  </div>
+  <div class="card muted">
+    <div class="num">{{ '{:,.1f}'.format(report.totals.hours) }}</div>
+    <div class="lbl">hours logged</div>
+  </div>
+</section>
+
+{% if report.totals.hours_no_cost_rate %}
+<div class="flash flash-warn">
+  {{ '{:,.1f}'.format(report.totals.hours_no_cost_rate) }} hours in this period have
+  <b>no cost rate set in Harvest</b> — cost (and profit) is overstated until the
+  contractor's cost rate is filled in (Harvest → Manage → People → edit → Cost rate).
+</div>
+{% endif %}
+
+<table class="grid">
+  <thead>
+    <tr>
+      <th>Contractor</th>
+      <th class="r">Hours</th>
+      <th class="r">Billable h</th>
+      <th class="r">Bill rate/h</th>
+      <th class="r">Cost rate/h</th>
+      <th class="r">Billed</th>
+      <th class="r">Cost</th>
+      <th class="r">Profit</th>
+      <th class="r">Margin</th>
+      <th>Projects</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for p in report.people %}
+    <tr>
+      <td>{{ p.name }}
+        {% if p.hours_no_cost_rate %}<span class="pill conf-medium" title="{{ '{:,.1f}'.format(p.hours_no_cost_rate) }}h logged without a cost rate">no cost rate</span>{% endif %}
+        {% if p.billable_hours_no_bill_rate %}<span class="pill conf-low" title="{{ '{:,.1f}'.format(p.billable_hours_no_bill_rate) }} billable hours without a bill rate">no bill rate</span>{% endif %}
+      </td>
+      <td class="r mono">{{ '{:,.1f}'.format(p.hours) }}</td>
+      <td class="r mono">{{ '{:,.1f}'.format(p.billable_hours) }}</td>
+      <td class="r mono">{{ '${:,.2f}'.format(p.bill_rate) if p.bill_rate is not none else '—' }}</td>
+      <td class="r mono">{{ '${:,.2f}'.format(p.cost_rate) if p.cost_rate is not none else '—' }}</td>
+      <td class="r mono">{{ '${:,.2f}'.format(p.revenue) }}</td>
+      <td class="r mono">{{ '${:,.2f}'.format(p.cost) }}</td>
+      <td class="r mono {{ 'pos' if p.profit >= 0 else 'neg' }}">
+        {{ '−' if p.profit < 0 }}${{ '{:,.2f}'.format(p.profit|abs) }}
+      </td>
+      <td class="r mono">{{ '{:.0%}'.format(p.margin) if p.margin is not none else '—' }}</td>
+      <td class="small projcell">
+        {% for name, hours in p.projects %}{{ name }} ({{ '{:,.1f}'.format(hours) }}h){{ ', ' if not loop.last }}{% endfor %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="10" class="empty">No time entries between {{ date_from }} and {{ date_to }}.</td></tr>
+  {% endfor %}
+  </tbody>
+  {% if report.people %}
+  <tfoot>
+    <tr class="totals">
+      <td>Total ({{ report.people|length }} contractors)</td>
+      <td class="r mono">{{ '{:,.1f}'.format(report.totals.hours) }}</td>
+      <td class="r mono">{{ '{:,.1f}'.format(report.totals.billable_hours) }}</td>
+      <td></td><td></td>
+      <td class="r mono">{{ '${:,.2f}'.format(report.totals.revenue) }}</td>
+      <td class="r mono">{{ '${:,.2f}'.format(report.totals.cost) }}</td>
+      <td class="r mono {{ 'pos' if report.totals.profit >= 0 else 'neg' }}">
+        {{ '−' if report.totals.profit < 0 }}${{ '{:,.2f}'.format(report.totals.profit|abs) }}
+      </td>
+      <td class="r mono">{{ '{:.0%}'.format(report.totals.margin) if report.totals.margin is not none else '—' }}</td>
+      <td></td>
+    </tr>
+  </tfoot>
+  {% endif %}
+</table>
+
+<p class="hint" style="margin-top:14px">
+  Revenue = billable hours × the bill rate on each Harvest time entry. Cost = all
+  logged hours × the entry's cost rate (contractors are paid for logged time,
+  billable or not). Rates shown are the period's effective averages, so they stay
+  correct when someone works at different rates on different projects.
+</p>
+{% endif %}
+
+{% endblock %}

@@ -34,6 +34,7 @@ approval-form dropdown (keeps the dashboard itself secret-free).
 import json
 import logging
 import os
+import re
 
 from dotenv import load_dotenv
 from slack_sdk import WebClient
@@ -384,14 +385,98 @@ def run_provisioning(person_id=None):
     return results
 
 
+def finance_report(harvest: HarvestClient, date_from: str, date_to: str):
+    """
+    Per-contractor profit for a period, straight from Harvest time entries.
+
+    Revenue counts only billable hours (hours x the entry's billable_rate);
+    cost counts ALL logged hours (contractors are paid for logged time) at the
+    entry's cost_rate. Hours logged without a cost/billable rate are surfaced
+    per person so a missing rate reads as "fix this in Harvest", never as free
+    margin.
+    """
+    entries = harvest.list_time_entries(date_from, date_to)
+    people = {}
+    for e in entries:
+        user = e.get("user") or {}
+        uid = user.get("id")
+        if uid is None:
+            continue
+        p = people.setdefault(uid, {
+            "user_id": uid, "name": user.get("name") or f"user {uid}",
+            "hours": 0.0, "billable_hours": 0.0,
+            "revenue": 0.0, "cost": 0.0,
+            "hours_no_cost_rate": 0.0, "billable_hours_no_bill_rate": 0.0,
+            "projects": {},
+        })
+        hours = float(e.get("hours") or 0)
+        p["hours"] += hours
+        project = (e.get("project") or {}).get("name") or "?"
+        p["projects"][project] = p["projects"].get(project, 0.0) + hours
+
+        cost_rate = e.get("cost_rate")
+        if cost_rate:
+            p["cost"] += hours * float(cost_rate)
+        elif hours:
+            p["hours_no_cost_rate"] += hours
+
+        if e.get("billable"):
+            p["billable_hours"] += hours
+            bill_rate = e.get("billable_rate")
+            if bill_rate:
+                p["revenue"] += hours * float(bill_rate)
+            elif hours:
+                p["billable_hours_no_bill_rate"] += hours
+
+    rows = []
+    for p in people.values():
+        p["profit"] = p["revenue"] - p["cost"]
+        p["margin"] = (p["profit"] / p["revenue"]) if p["revenue"] else None
+        # Effective rates observed in the period (entry rates can vary by project),
+        # averaged over the hours that actually carry a rate.
+        rated_billable = p["billable_hours"] - p["billable_hours_no_bill_rate"]
+        p["bill_rate"] = (p["revenue"] / rated_billable) if rated_billable > 0 else None
+        p["cost_rate"] = (p["cost"] / (p["hours"] - p["hours_no_cost_rate"])
+                          if (p["hours"] - p["hours_no_cost_rate"]) > 0 else None)
+        p["projects"] = sorted(p["projects"].items(), key=lambda kv: -kv[1])
+        for money in ("revenue", "cost", "profit"):
+            p[money] = round(p[money], 2)
+        rows.append(p)
+    rows.sort(key=lambda r: -(r["profit"]))
+
+    totals = {
+        "hours": round(sum(r["hours"] for r in rows), 2),
+        "billable_hours": round(sum(r["billable_hours"] for r in rows), 2),
+        "revenue": round(sum(r["revenue"] for r in rows), 2),
+        "cost": round(sum(r["cost"] for r in rows), 2),
+        "profit": round(sum(r["profit"] for r in rows), 2),
+        "hours_no_cost_rate": round(sum(r["hours_no_cost_rate"] for r in rows), 2),
+    }
+    totals["margin"] = (totals["profit"] / totals["revenue"]) if totals["revenue"] else None
+    return {"from": date_from, "to": date_to, "people": rows, "totals": totals}
+
+
 def provision_onboarding(request):
     """
     HTTP entry point (authenticated).
       GET  ?list=projects          -> JSON active Harvest projects (dashboard dropdown)
+      GET  ?report=finance&from=YYYY-MM-DD&to=YYYY-MM-DD
+                                   -> per-contractor profit report (dashboard /finance)
       POST {"person_id": "..."}    -> provision that hire now
       POST (empty body)            -> sweep all lifecycle=provisioning docs (scheduler)
     """
     try:
+        if request.args.get("report") == "finance":
+            date_from = request.args.get("from", "")
+            date_to = request.args.get("to", "")
+            if not (re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_from)
+                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_to)):
+                return (json.dumps({"error": "from/to must be YYYY-MM-DD"}), 400,
+                        {"Content-Type": "application/json"})
+            harvest = HarvestClient(HARVEST_API_KEY, HARVEST_ACCOUNT_ID)
+            report = finance_report(harvest, date_from, date_to)
+            return json.dumps({"report": report}), 200, {"Content-Type": "application/json"}
+
         if request.args.get("list") == "projects":
             harvest = HarvestClient(HARVEST_API_KEY, HARVEST_ACCOUNT_ID)
             projects = [{"id": p["id"], "name": p["name"],
