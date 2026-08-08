@@ -108,6 +108,13 @@ class HarvestClient:
         return self._get_paginated("/time_entries", "time_entries",
                                    {"from": date_from, "to": date_to})
 
+    def list_invoices(self, issued_from: str = None):
+        """All invoices, optionally only those issued on/after issued_from
+        (YYYY-MM-DD). Line items ride along in the list response, including the
+        per-person rows our time imports generate ("Project: Person (from - to)")."""
+        params = {"from": issued_from} if issued_from else None
+        return self._get_paginated("/invoices", "invoices", params)
+
     def seat_usage(self):
         """(active_users, note) — for flagging empty seats; Harvest exposes no
         plan-size endpoint, so the cap itself only surfaces via the 422 on create."""

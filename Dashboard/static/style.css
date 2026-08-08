@@ -139,3 +139,9 @@ a:hover { text-decoration: underline; }
 .neg { color: var(--red); }
 .totals td { border-top: 2px solid var(--line); font-weight: 600; }
 .projcell { max-width: 220px; color: var(--muted); }
+.section-title { font-size: 16px; margin: 28px 0 12px; }
+.subnote { color: var(--muted); }
+.inv-paid { color: var(--green); border-color: var(--green); }
+.inv-open { color: var(--amber); border-color: var(--amber); }
+.inv-draft { color: var(--muted); }
+.inv-closed { color: var(--red); border-color: var(--red); }

@@ -31,6 +31,7 @@ the doc to "not_signed_in" when all three invites are out.
 Also serves GET ?list=projects — the active Harvest projects for the dashboard's
 approval-form dropdown (keeps the dashboard itself secret-free).
 """
+import datetime
 import json
 import logging
 import os
@@ -59,6 +60,9 @@ ZOHO_REFRESH_TOKEN = (os.getenv("ZOHO_REFRESH_TOKEN") or "").strip()
 # @thirstysprout.ai domain). When set, the Slack "invite" is an email to the
 # work inbox instead of the admin API / manual-DM dance.
 SLACK_INVITE_LINK = (os.getenv("SLACK_INVITE_LINK") or "").strip()
+# Optional: prices contractor cost in the finance report from Deel contract
+# rates (the real pay rate) instead of Harvest cost_rate.
+DEEL_API_KEY = (os.getenv("DEEL_API_KEY") or "").strip()
 
 ZOHO_CREATED_MESSAGE = (
     ":white_check_mark: *Zoho mailbox created for {name}*: *{work_email}* "
@@ -385,15 +389,115 @@ def run_provisioning(person_id=None):
     return results
 
 
+def _deel_hourly_rates(harvest_user_ids):
+    """
+    harvest_user_id -> {"rate", "currency", "contract_id"} from Deel contracts.
+
+    The payroll sync stamps external_id = "harvest_<user id>" on Deel contracts,
+    so the join is a straight index. Rates only exist on the contract DETAIL
+    (compensation_details); only scale == "hourly" is usable as a cost rate.
+    Best-effort: any Deel hiccup just means Harvest cost_rate fallback.
+    """
+    if not (DEEL_API_KEY and harvest_user_ids):
+        return {}
+    try:
+        from deel_client import DeelClient
+        deel = DeelClient(DEEL_API_KEY)
+        contracts = deel.get_all_contracts(contract_type=None)
+    except Exception as e:
+        logging.warning(f"finance: Deel contracts unavailable ({e}) — using Harvest cost rates")
+        return {}
+
+    # Prefer a live contract when the same person has several (re-hires etc.).
+    status_rank = {"in_progress": 0, "completed": 1}
+    by_ext = {}
+    for c in contracts:
+        ext = c.get("external_id") or ""
+        if not ext.startswith("harvest_"):
+            continue
+        rank = status_rank.get(c.get("status"), 2)
+        if ext not in by_ext or rank < by_ext[ext][0]:
+            by_ext[ext] = (rank, c)
+
+    rates = {}
+    for uid in harvest_user_ids:
+        found = by_ext.get(f"harvest_{uid}")
+        if not found:
+            continue
+        try:
+            detail = deel.get_contract(found[1]["id"]) or {}
+        except Exception:
+            continue
+        comp = detail.get("compensation_details") or {}
+        if comp.get("scale") == "hourly" and comp.get("amount"):
+            rates[uid] = {
+                "rate": float(comp["amount"]),
+                "currency": comp.get("currency_code") or "USD",
+                "contract_id": found[1]["id"],
+            }
+    return rates
+
+
+def _overlaps(a_start, a_end, b_start, b_end):
+    """Date-string overlap; open-ended sides count as overlapping."""
+    if not (a_start and a_end):
+        return False
+    return a_start <= b_end and a_end >= b_start
+
+
+def _invoice_stats(harvest, date_from, date_to, person_names):
+    """
+    (per-person paid/open amounts, invoice rows) for invoices whose service
+    period overlaps the report range (or, for period-less invoices such as
+    milestones, whose issue_date falls in it).
+
+    Per-person attribution parses the line items our own invoice import
+    generates — "Project: Person Name (from - to)" — by name containment.
+    Draft and closed (written-off) invoices are listed but never attributed.
+    """
+    lookback = (datetime.date.fromisoformat(date_from)
+                - datetime.timedelta(days=60)).isoformat()
+    invoices = harvest.list_invoices(issued_from=lookback)
+
+    rows, attribution = [], {name: {"paid": 0.0, "open": 0.0} for name in person_names}
+    for inv in invoices:
+        issue = inv.get("issue_date") or ""
+        if not (_overlaps(inv.get("period_start"), inv.get("period_end"), date_from, date_to)
+                or (not inv.get("period_start") and date_from <= issue <= date_to)):
+            continue
+        state = inv.get("state")
+        rows.append({
+            "id": inv.get("id"), "number": inv.get("number"),
+            "client": (inv.get("client") or {}).get("name", ""),
+            "amount": inv.get("amount"), "state": state,
+            "issue_date": issue, "due_date": inv.get("due_date"),
+            "paid_date": inv.get("paid_date"),
+            "period_start": inv.get("period_start"), "period_end": inv.get("period_end"),
+        })
+        if state not in ("paid", "open"):
+            continue  # draft/closed: visible in the table, not in the numbers
+        for li in inv.get("line_items") or []:
+            desc = li.get("description") or ""
+            for name in person_names:
+                if name and name in desc:
+                    attribution[name][state] += float(li.get("amount") or 0)
+                    break
+
+    rows.sort(key=lambda r: (r["issue_date"] or ""), reverse=True)
+    return attribution, rows
+
+
 def finance_report(harvest: HarvestClient, date_from: str, date_to: str):
     """
-    Per-contractor profit for a period, straight from Harvest time entries.
+    Per-contractor profit for a period.
 
-    Revenue counts only billable hours (hours x the entry's billable_rate);
-    cost counts ALL logged hours (contractors are paid for logged time) at the
-    entry's cost_rate. Hours logged without a cost/billable rate are surfaced
-    per person so a missing rate reads as "fix this in Harvest", never as free
-    margin.
+    Revenue = billable hours x the Harvest entry's billable_rate. Cost = ALL
+    logged hours (contractors are paid for logged time) priced from the Deel
+    contract's hourly rate (the real pay rate) when a mapped contract exists,
+    falling back to the Harvest entry's cost_rate. Invoice attribution adds
+    what has actually been PAID per contractor, so collected profit
+    (paid - cost) is separate from billed profit. Unpriced hours are surfaced
+    per person so a missing rate reads as "fix this", never as free margin.
     """
     entries = harvest.list_time_entries(date_from, date_to)
     people = {}
@@ -405,8 +509,8 @@ def finance_report(harvest: HarvestClient, date_from: str, date_to: str):
         p = people.setdefault(uid, {
             "user_id": uid, "name": user.get("name") or f"user {uid}",
             "hours": 0.0, "billable_hours": 0.0,
-            "revenue": 0.0, "cost": 0.0,
-            "hours_no_cost_rate": 0.0, "billable_hours_no_bill_rate": 0.0,
+            "revenue": 0.0, "harvest_cost": 0.0,
+            "harvest_hours_no_cost_rate": 0.0, "billable_hours_no_bill_rate": 0.0,
             "projects": {},
         })
         hours = float(e.get("hours") or 0)
@@ -416,9 +520,9 @@ def finance_report(harvest: HarvestClient, date_from: str, date_to: str):
 
         cost_rate = e.get("cost_rate")
         if cost_rate:
-            p["cost"] += hours * float(cost_rate)
+            p["harvest_cost"] += hours * float(cost_rate)
         elif hours:
-            p["hours_no_cost_rate"] += hours
+            p["harvest_hours_no_cost_rate"] += hours
 
         if e.get("billable"):
             p["billable_hours"] += hours
@@ -428,18 +532,41 @@ def finance_report(harvest: HarvestClient, date_from: str, date_to: str):
             elif hours:
                 p["billable_hours_no_bill_rate"] += hours
 
+    # Second pass: price cost from Deel where a mapped hourly contract exists.
+    deel_rates = _deel_hourly_rates(list(people.keys()))
+    paid_by_name, invoice_rows = _invoice_stats(
+        harvest, date_from, date_to, [p["name"] for p in people.values()])
+
     rows = []
     for p in people.values():
+        deel = deel_rates.get(p["user_id"])
+        if deel:
+            p["cost"] = p["hours"] * deel["rate"]
+            p["cost_rate"] = deel["rate"]
+            p["cost_rate_source"] = "deel"
+            p["cost_currency"] = deel["currency"]
+            p["hours_no_cost_rate"] = 0.0
+        else:
+            p["cost"] = p["harvest_cost"]
+            p["hours_no_cost_rate"] = p["harvest_hours_no_cost_rate"]
+            priced = p["hours"] - p["hours_no_cost_rate"]
+            p["cost_rate"] = (p["cost"] / priced) if priced > 0 else None
+            p["cost_rate_source"] = "harvest" if p["cost"] else "none"
+            p["cost_currency"] = "USD"
+        del p["harvest_cost"], p["harvest_hours_no_cost_rate"]
+
+        paid = paid_by_name.get(p["name"]) or {"paid": 0.0, "open": 0.0}
+        p["paid_amount"] = round(paid["paid"], 2)
+        p["open_amount"] = round(paid["open"], 2)
         p["profit"] = p["revenue"] - p["cost"]
+        p["collected_profit"] = p["paid_amount"] - p["cost"]
         p["margin"] = (p["profit"] / p["revenue"]) if p["revenue"] else None
-        # Effective rates observed in the period (entry rates can vary by project),
-        # averaged over the hours that actually carry a rate.
+        # Effective bill rate observed in the period (entry rates can vary by
+        # project), averaged over the hours that actually carry a rate.
         rated_billable = p["billable_hours"] - p["billable_hours_no_bill_rate"]
         p["bill_rate"] = (p["revenue"] / rated_billable) if rated_billable > 0 else None
-        p["cost_rate"] = (p["cost"] / (p["hours"] - p["hours_no_cost_rate"])
-                          if (p["hours"] - p["hours_no_cost_rate"]) > 0 else None)
         p["projects"] = sorted(p["projects"].items(), key=lambda kv: -kv[1])
-        for money in ("revenue", "cost", "profit"):
+        for money in ("revenue", "cost", "profit", "collected_profit"):
             p[money] = round(p[money], 2)
         rows.append(p)
     rows.sort(key=lambda r: -(r["profit"]))
@@ -450,10 +577,15 @@ def finance_report(harvest: HarvestClient, date_from: str, date_to: str):
         "revenue": round(sum(r["revenue"] for r in rows), 2),
         "cost": round(sum(r["cost"] for r in rows), 2),
         "profit": round(sum(r["profit"] for r in rows), 2),
+        "paid_amount": round(sum(r["paid_amount"] for r in rows), 2),
+        "open_amount": round(sum(r["open_amount"] for r in rows), 2),
+        "collected_profit": round(sum(r["collected_profit"] for r in rows), 2),
         "hours_no_cost_rate": round(sum(r["hours_no_cost_rate"] for r in rows), 2),
+        "deel_rated": sum(1 for r in rows if r["cost_rate_source"] == "deel"),
     }
     totals["margin"] = (totals["profit"] / totals["revenue"]) if totals["revenue"] else None
-    return {"from": date_from, "to": date_to, "people": rows, "totals": totals}
+    return {"from": date_from, "to": date_to, "people": rows, "totals": totals,
+            "invoices": invoice_rows}
 
 
 def provision_onboarding(request):

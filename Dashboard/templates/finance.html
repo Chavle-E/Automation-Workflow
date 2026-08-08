@@ -17,36 +17,44 @@
 </form>
 
 {% if report %}
+{% set t = report.totals %}
 <section class="cards">
   <div class="card">
-    <div class="num">${{ '{:,.0f}'.format(report.totals.revenue) }}</div>
+    <div class="num">${{ '{:,.0f}'.format(t.revenue) }}</div>
     <div class="lbl">billed (revenue)</div>
   </div>
   <div class="card">
-    <div class="num">${{ '{:,.0f}'.format(report.totals.cost) }}</div>
+    <div class="num">${{ '{:,.0f}'.format(t.paid_amount) }}</div>
+    <div class="lbl">collected (paid)</div>
+  </div>
+  <div class="card">
+    <div class="num">${{ '{:,.0f}'.format(t.cost) }}</div>
     <div class="lbl">contractor cost</div>
   </div>
   <div class="card">
-    <div class="num {{ 'pos' if report.totals.profit >= 0 else 'neg' }}">
-      {{ '−' if report.totals.profit < 0 }}${{ '{:,.0f}'.format(report.totals.profit|abs) }}
+    <div class="num {{ 'pos' if t.profit >= 0 else 'neg' }}">
+      {{ '−' if t.profit < 0 }}${{ '{:,.0f}'.format(t.profit|abs) }}
     </div>
-    <div class="lbl">profit</div>
+    <div class="lbl">profit (billed − cost)</div>
   </div>
   <div class="card">
-    <div class="num">{{ '{:.0%}'.format(report.totals.margin) if report.totals.margin is not none else '—' }}</div>
-    <div class="lbl">margin</div>
+    <div class="num {{ 'pos' if t.collected_profit >= 0 else 'neg' }}">
+      {{ '−' if t.collected_profit < 0 }}${{ '{:,.0f}'.format(t.collected_profit|abs) }}
+    </div>
+    <div class="lbl">real profit (paid − cost)</div>
   </div>
   <div class="card muted">
-    <div class="num">{{ '{:,.1f}'.format(report.totals.hours) }}</div>
+    <div class="num">{{ '{:,.1f}'.format(t.hours) }}</div>
     <div class="lbl">hours logged</div>
   </div>
 </section>
 
-{% if report.totals.hours_no_cost_rate %}
+{% if t.hours_no_cost_rate %}
 <div class="flash flash-warn">
-  {{ '{:,.1f}'.format(report.totals.hours_no_cost_rate) }} hours in this period have
-  <b>no cost rate set in Harvest</b> — cost (and profit) is overstated until the
-  contractor's cost rate is filled in (Harvest → Manage → People → edit → Cost rate).
+  {{ '{:,.1f}'.format(t.hours_no_cost_rate) }} hours in this period have <b>no cost
+  rate</b> — no mapped Deel contract with an hourly rate, and no cost rate in
+  Harvest. Cost (and profit) is overstated for the flagged contractors until a
+  rate exists in either system.
 </div>
 {% endif %}
 
@@ -55,13 +63,13 @@
     <tr>
       <th>Contractor</th>
       <th class="r">Hours</th>
-      <th class="r">Billable h</th>
       <th class="r">Bill rate/h</th>
       <th class="r">Cost rate/h</th>
       <th class="r">Billed</th>
+      <th class="r">Paid</th>
       <th class="r">Cost</th>
       <th class="r">Profit</th>
-      <th class="r">Margin</th>
+      <th class="r">Real profit</th>
       <th>Projects</th>
     </tr>
   </thead>
@@ -69,19 +77,23 @@
   {% for p in report.people %}
     <tr>
       <td>{{ p.name }}
-        {% if p.hours_no_cost_rate %}<span class="pill conf-medium" title="{{ '{:,.1f}'.format(p.hours_no_cost_rate) }}h logged without a cost rate">no cost rate</span>{% endif %}
+        {% if p.cost_rate_source == 'harvest' %}<span class="pill muted-pill" title="No mapped Deel hourly contract — cost priced from the Harvest cost rate">harvest rate</span>{% endif %}
+        {% if p.cost_rate_source == 'none' %}<span class="pill conf-medium" title="No Deel contract rate and no Harvest cost rate — cost shows as $0">no cost rate</span>{% endif %}
+        {% if p.cost_currency and p.cost_currency != 'USD' %}<span class="pill conf-medium" title="Deel contract is priced in {{ p.cost_currency }} — cost column mixes currencies">{{ p.cost_currency }}</span>{% endif %}
         {% if p.billable_hours_no_bill_rate %}<span class="pill conf-low" title="{{ '{:,.1f}'.format(p.billable_hours_no_bill_rate) }} billable hours without a bill rate">no bill rate</span>{% endif %}
       </td>
       <td class="r mono">{{ '{:,.1f}'.format(p.hours) }}</td>
-      <td class="r mono">{{ '{:,.1f}'.format(p.billable_hours) }}</td>
       <td class="r mono">{{ '${:,.2f}'.format(p.bill_rate) if p.bill_rate is not none else '—' }}</td>
       <td class="r mono">{{ '${:,.2f}'.format(p.cost_rate) if p.cost_rate is not none else '—' }}</td>
       <td class="r mono">{{ '${:,.2f}'.format(p.revenue) }}</td>
+      <td class="r mono">{{ '${:,.2f}'.format(p.paid_amount) }}{% if p.open_amount %}<span class="small subnote" title="on open (unpaid) invoices"> +{{ '${:,.0f}'.format(p.open_amount) }} open</span>{% endif %}</td>
       <td class="r mono">{{ '${:,.2f}'.format(p.cost) }}</td>
       <td class="r mono {{ 'pos' if p.profit >= 0 else 'neg' }}">
         {{ '−' if p.profit < 0 }}${{ '{:,.2f}'.format(p.profit|abs) }}
       </td>
-      <td class="r mono">{{ '{:.0%}'.format(p.margin) if p.margin is not none else '—' }}</td>
+      <td class="r mono {{ 'pos' if p.collected_profit >= 0 else 'neg' }}">
+        {{ '−' if p.collected_profit < 0 }}${{ '{:,.2f}'.format(p.collected_profit|abs) }}
+      </td>
       <td class="small projcell">
         {% for name, hours in p.projects %}{{ name }} ({{ '{:,.1f}'.format(hours) }}h){{ ', ' if not loop.last }}{% endfor %}
       </td>
@@ -94,15 +106,17 @@
   <tfoot>
     <tr class="totals">
       <td>Total ({{ report.people|length }} contractors)</td>
-      <td class="r mono">{{ '{:,.1f}'.format(report.totals.hours) }}</td>
-      <td class="r mono">{{ '{:,.1f}'.format(report.totals.billable_hours) }}</td>
+      <td class="r mono">{{ '{:,.1f}'.format(t.hours) }}</td>
       <td></td><td></td>
-      <td class="r mono">{{ '${:,.2f}'.format(report.totals.revenue) }}</td>
-      <td class="r mono">{{ '${:,.2f}'.format(report.totals.cost) }}</td>
-      <td class="r mono {{ 'pos' if report.totals.profit >= 0 else 'neg' }}">
-        {{ '−' if report.totals.profit < 0 }}${{ '{:,.2f}'.format(report.totals.profit|abs) }}
+      <td class="r mono">{{ '${:,.2f}'.format(t.revenue) }}</td>
+      <td class="r mono">{{ '${:,.2f}'.format(t.paid_amount) }}</td>
+      <td class="r mono">{{ '${:,.2f}'.format(t.cost) }}</td>
+      <td class="r mono {{ 'pos' if t.profit >= 0 else 'neg' }}">
+        {{ '−' if t.profit < 0 }}${{ '{:,.2f}'.format(t.profit|abs) }}
       </td>
-      <td class="r mono">{{ '{:.0%}'.format(report.totals.margin) if report.totals.margin is not none else '—' }}</td>
+      <td class="r mono {{ 'pos' if t.collected_profit >= 0 else 'neg' }}">
+        {{ '−' if t.collected_profit < 0 }}${{ '{:,.2f}'.format(t.collected_profit|abs) }}
+      </td>
       <td></td>
     </tr>
   </tfoot>
@@ -110,11 +124,38 @@
 </table>
 
 <p class="hint" style="margin-top:14px">
-  Revenue = billable hours × the bill rate on each Harvest time entry. Cost = all
-  logged hours × the entry's cost rate (contractors are paid for logged time,
-  billable or not). Rates shown are the period's effective averages, so they stay
-  correct when someone works at different rates on different projects.
+  Cost rates come from the contractor's <b>Deel contract</b> (hourly rate) via the
+  payroll mapping; contractors without one fall back to the Harvest cost rate and
+  are tagged. “Paid” sums the contractor's line items on <b>paid</b> invoices whose
+  service period overlaps this range; “+ open” is the same on issued-but-unpaid
+  invoices. Real profit = paid − cost.
 </p>
+
+<h2 class="section-title">Invoices covering this period</h2>
+<table class="grid">
+  <thead>
+    <tr>
+      <th>#</th><th>Client</th><th>Service period</th><th>Issued</th>
+      <th class="r">Amount</th><th>Status</th><th>Due</th><th>Paid</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for inv in report.invoices %}
+    <tr>
+      <td class="mono">{{ inv.number }}</td>
+      <td>{{ inv.client }}</td>
+      <td class="mono small">{{ inv.period_start or '—' }}{% if inv.period_start %} → {{ inv.period_end }}{% endif %}</td>
+      <td class="mono small">{{ inv.issue_date }}</td>
+      <td class="r mono">${{ '{:,.2f}'.format(inv.amount or 0) }}</td>
+      <td><span class="pill inv-{{ inv.state }}">{{ inv.state }}</span></td>
+      <td class="mono small">{{ inv.due_date or '—' }}</td>
+      <td class="mono small">{{ inv.paid_date or '—' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="empty">No invoices cover {{ date_from }} → {{ date_to }}.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
 {% endif %}
 
 {% endblock %}

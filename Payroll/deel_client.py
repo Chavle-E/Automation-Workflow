@@ -109,6 +109,24 @@ class DeelClient:
 
     @sleep_and_retry
     @limits(calls=5, period=1)
+    def get_contract(self, contract_id: str) -> Optional[Dict]:
+        """
+        Fetch one contract's full record. The LIST endpoint omits compensation:
+        rate/currency/scale only appear here, under data.compensation_details
+        (e.g. amount "30.00", scale "hourly"). Used by the finance report to
+        price contractor cost from the Deel contract instead of Harvest.
+        """
+        url = f"{self.base_url}/contracts/{contract_id}"
+        try:
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+            return response.json().get("data")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"Error fetching Deel contract {contract_id}: {e}")
+            return None
+
+    @sleep_and_retry
+    @limits(calls=5, period=1)
     def set_external_id(self, contract_id: str, harvest_user_id: str) -> bool:
         """Set Harvest user ID as external_id on Deel contract."""
         url = f"{self.base_url}/contracts/{contract_id}"
