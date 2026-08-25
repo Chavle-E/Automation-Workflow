@@ -1,0 +1,8 @@
+# Keep the Cloud Run source upload lean.
+.git
+.gitignore
+__pycache__/
+*.pyc
+venv/
+.env
+README.md

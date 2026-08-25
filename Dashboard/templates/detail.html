@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.email or doc.person_id }}{% endblock %}
+{% block content %}
+
+<p class="crumb"><a href="{{ url_for('roster') }}">← roster</a></p>
+
+<div class="detail-head">
+  <h1 class="mono">{{ doc.email or '—' }}</h1>
+  <div>
+    <span class="pill life-{{ doc.lifecycle }}">{{ doc.lifecycle }}</span>
+    <span class="pill conf-{{ doc.name_confidence }}">{{ doc.name_confidence }} confidence</span>
+    {% if doc.backfill_back_catalog %}<span class="pill muted-pill">back-catalog</span>{% endif %}
+  </div>
+</div>
+
+{% if doc.name_confidence == 'low' %}
+<div class="banner">
+  ⚠ Low name confidence — the contract name and personal-details name disagree, so the
+  attached Deel contract may be wrong. Verify before any provisioning.
+</div>
+{% endif %}
+
+<section class="panel">
+  <h2>Identity</h2>
+  <dl class="kv">
+    <dt>person_id</dt><dd class="mono">{{ doc.person_id }}</dd>
+    <dt>personal name</dt><dd>{{ doc.personal_name or '—' }}</dd>
+    <dt>contract name</dt><dd>{{ doc.contract_name or '—' }}</dd>
+    <dt>proposed email</dt><dd class="mono">{{ doc.email or '—' }}</dd>
+    <dt>start date</dt><dd>{{ (doc.start_date or '')[:10] or '—' }}</dd>
+  </dl>
+</section>
+
+{% if approvable %}
+<section class="panel approve">
+  <h2>Approve &amp; provision</h2>
+  <p class="hint">
+    Approving records these values and starts provisioning: Zoho instructions are DM'd to
+    the operators first; Slack + Harvest invites go out to the work email automatically
+    once “Zoho created” is marked here.
+  </p>
+  <form method="post" action="{{ url_for('approve', person_id=doc.person_id) }}" class="form-grid">
+    <label>Billable rate (USD/h, required unless “No Harvest”)
+      <input type="number" name="billable_rate" step="0.01" min="1">
+    </label>
+    <label>Cost rate (optional, from Deel payment rate)
+      <input type="number" name="cost_rate" step="0.01" min="0">
+    </label>
+    <label>Personal email (Zoho credentials go here)
+      <input type="email" name="personal_email" required placeholder="their Deel-signup email">
+    </label>
+    <label>Harvest project
+      {% if projects %}
+      <select name="harvest_project_id" required>
+        <option value="" disabled selected>choose a project…</option>
+        <option value="__none__">— No Harvest (time tracked outside Harvest) —</option>
+        {% for p in projects %}
+        <option value="{{ p.id }}">{{ p.client }} — {{ p.name }}</option>
+        {% endfor %}
+      </select>
+      {% else %}
+      <input type="text" name="harvest_project_id" required
+             placeholder="Harvest project ID, or 'none' to skip Harvest">
+      {% endif %}
+    </label>
+    <button type="submit" class="btn primary"
+            onclick="return confirm('Approve {{ doc.email }} and start provisioning?')">
+      Approve &amp; provision
+    </button>
+  </form>
+</section>
+{% elif doc.lifecycle == 'needs_approval' and doc.backfill_back_catalog %}
+<section class="panel">
+  <h2>Approve &amp; provision</h2>
+  <p class="hint">Back-catalog record (pre-existing staff) — provisioning is disabled for it.</p>
+</section>
+{% endif %}
+
+{% if doc.provision_request %}
+<section class="panel">
+  <h2>Approval</h2>
+  <dl class="kv">
+    <dt>approved by</dt><dd>{{ doc.provision_request.by }}</dd>
+    <dt>approved at</dt><dd class="mono small">{{ doc.provision_request.at }}</dd>
+    <dt>billable rate</dt><dd>{{ doc.provision_request.billable_rate }}</dd>
+    <dt>cost rate</dt><dd>{{ doc.provision_request.cost_rate if doc.provision_request.cost_rate is not none else '—' }}</dd>
+    <dt>personal email</dt><dd class="mono">{{ doc.provision_request.personal_email }}</dd>
+    <dt>harvest project</dt><dd>{{ doc.provision_request.harvest_project_name or doc.provision_request.harvest_project_id or 'No Harvest (skipped)' }}</dd>
+  </dl>
+  {% if doc.lifecycle == 'provisioning' %}
+  <form method="post" action="{{ url_for('retry', person_id=doc.person_id) }}" class="inline-form">
+    <button type="submit" class="btn">Retry provisioning</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>Accounts</h2>
+  <div class="accounts">
+    {% for name, acct in (doc.accounts or {}).items() %}
+    <div class="acct">
+      <h3>{{ name }}</h3>
+      <dl class="kv">
+        {% for k, v in acct.items() %}
+        <dt>{{ k }}</dt><dd class="{{ 'mono' if v }}">{{ v if v is not none else '—' }}</dd>
+        {% endfor %}
+      </dl>
+      {% if doc.lifecycle in ('provisioning', 'not_signed_in') %}
+        {% for step, spec in manual_steps.items() %}
+          {% if spec[0] == name and not acct.get(spec[1]) and not (name == 'harvest' and acct.get('skipped_at')) %}
+          <form method="post" action="{{ url_for('mark_step', person_id=doc.person_id, step=step) }}" class="inline-form">
+            <button type="submit" class="btn small-btn"
+                    onclick="return confirm('Record that this was done manually?')">
+              Mark {{ step.replace('_', ' ') }}
+            </button>
+          </form>
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Audit</h2>
+  <table class="grid">
+    <thead><tr><th>When</th><th>Action</th><th>By</th></tr></thead>
+    <tbody>
+    {% for a in doc.audit or [] %}
+      <tr><td class="mono small">{{ a.at }}</td><td>{{ a.action }}</td><td>{{ a.by }}</td></tr>
+    {% else %}
+      <tr><td colspan="3" class="empty">No audit entries.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="ts">created {{ doc.created_at }} · updated {{ doc.updated_at }}</p>
+</section>
+
+{% endblock %}

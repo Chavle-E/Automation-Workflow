@@ -1,0 +1,6 @@
+requests
+ratelimit
+python-dotenv
+rapidfuzz>=3.0.0
+slack_sdk>=3.0
+google-cloud-firestore>=2.13.0,<3.0.0

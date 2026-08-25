@@ -1,62 +1,318 @@
 steps:
+  # 1. Deploy Slack Announcements (existing)
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
-        pip3 install -r Announcements/requirements.txt
-        SLACK_TOKEN=$(gcloud secrets versions access latest --secret="slack-token")
         gcloud functions deploy post_message_to_slack_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars SLACK_TOKEN=$$SLACK_TOKEN \
+          --clear-env-vars \
+          --set-secrets SLACK_TOKEN=slack-token:latest \
           --entry-point post_message_to_slack \
           --source=Announcements
 
+  # 2. Deploy Invoicing (existing)
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
-        pip3 install -r Invoicing/requirements.txt
-        HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
-        HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
         gcloud functions deploy create_invoices_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
+          --clear-env-vars \
+          --set-secrets HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest \
           --entry-point invoicing_trigger \
           --source=Invoicing
 
+  # 3. Deploy Payroll (updated with database)
   - name: 'google/cloud-sdk:slim'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        apt-get update && apt-get install -y python3 python3-pip
-        pip3 install --upgrade pip
-        pip3 install -r Payroll/requirements.txt
-        DEEL_API_KEY=$(gcloud secrets versions access latest --secret="deel-api-key")
-        HARVEST_API_KEY=$(gcloud secrets versions access latest --secret="harvest-api-key")
-        HARVEST_ACC_ID=$(gcloud secrets versions access latest --secret="harvest-acc-id")
         gcloud functions deploy process_payroll_http \
           --region europe-west1 \
           --runtime python311 \
           --trigger-http \
           --allow-unauthenticated \
-          --set-env-vars DEEL_API_KEY=$$DEEL_API_KEY,HARVEST_API_KEY=$$HARVEST_API_KEY,HARVEST_ACC_ID=$$HARVEST_ACC_ID \
+          --clear-env-vars \
+          --set-secrets DEEL_API_KEY=deel-api-key:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,GCS_BUCKET_NAME=gcs-bucket-name:latest \
           --entry-point payroll_trigger \
-          --source=Payroll
+          --source=Payroll \
+          --timeout=540s
+
+  # 4. Deploy Timesheet Reminders (existing)
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        gcloud functions deploy send_timesheet_reminders \
+          --region europe-west1 \
+          --runtime python311 \
+          --trigger-http \
+          --allow-unauthenticated \
+          --no-gen2 \
+          --clear-env-vars \
+          --set-secrets SLACK_TOKEN=slack-token:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest \
+          --entry-point reminder_trigger \
+          --source=Payroll_Reminders \
+          --timeout=120s
+
+  # 5. Deploy Mapping Sync (NEW - runs before payroll)
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        # PRIVATE: this is a gen2 (Cloud Run) function, which the org policy does
+        # NOT block from going public — it previously had an allUsers invoker
+        # binding. Deploy authenticated and strip any leftover allUsers binding;
+        # the scheduler's compute SA gets an explicit invoker grant instead.
+        gcloud functions deploy sync_user_mappings \
+          --region europe-west1 \
+          --runtime python311 \
+          --trigger-http \
+          --no-allow-unauthenticated \
+          --clear-env-vars \
+          --set-secrets DEEL_API_KEY=deel-api-key:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,GCS_BUCKET_NAME=gcs-bucket-name:latest,SLACK_TOKEN=slack-token:latest \
+          --entry-point mapping_sync_trigger \
+          --set-build-env-vars GOOGLE_FUNCTION_SOURCE=sync_mappings.py \
+          --source=Payroll \
+          --timeout=300s
+        gcloud functions remove-invoker-policy-binding sync_user_mappings \
+          --region=europe-west1 --member="allUsers" --quiet || true
+        gcloud functions add-invoker-policy-binding sync_user_mappings \
+          --region=europe-west1 \
+          --member="serviceAccount:164865114626-compute@developer.gserviceaccount.com" --quiet
+
+  # 6. Deploy Onboarding Backfill (NEW - seeds Firestore from Deel, idempotent)
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Single source of truth: copy shared modules from Payroll into the
+        # Onboarding source dir so --source=Onboarding packages them.
+        cp Payroll/deel_client.py Payroll/matcher.py Onboarding/
+        gcloud functions deploy backfill_onboarding \
+          --region europe-west1 \
+          --runtime python311 \
+          --trigger-http \
+          --allow-unauthenticated \
+          --set-secrets DEEL_API_KEY=deel-api-key:latest,SLACK_TOKEN=slack-token:latest \
+          --set-env-vars SLACK_CHANNEL=onboarding \
+          --entry-point backfill_onboarding \
+          --source=Onboarding \
+          --timeout=540s
+
+  # 6b. Deploy Onboarding Provisioning (approve flow: Zoho notify, Slack invite,
+  #     Harvest contractor + project; also serves the dashboard's project list).
+  #     PRIVATE — invoked by the dashboard + scheduler sweep via OIDC (compute SA).
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        gcloud functions deploy provision_onboarding \
+          --region europe-west1 \
+          --runtime python311 \
+          --trigger-http \
+          --no-allow-unauthenticated \
+          --clear-env-vars \
+          --set-secrets SLACK_TOKEN=slack-token:latest,HARVEST_API_KEY=harvest-api-key:latest,HARVEST_ACCOUNT_ID=harvest-acc-id:latest,ZOHO_CLIENT_ID=zoho-client-id:latest,ZOHO_CLIENT_SECRET=zoho-client-secret:latest,ZOHO_REFRESH_TOKEN=zoho-refresh-token:latest,SLACK_INVITE_LINK=slack-invite-link:latest,DEEL_API_KEY=deel-api-key:latest \
+          --entry-point provision_onboarding \
+          --set-build-env-vars GOOGLE_FUNCTION_SOURCE=provisioning.py \
+          --source=Onboarding \
+          --timeout=300s
+        # Dashboard (Cloud Run) and the scheduler both run as the compute SA.
+        gcloud functions add-invoker-policy-binding provision_onboarding \
+          --region=europe-west1 \
+          --member="serviceAccount:164865114626-compute@developer.gserviceaccount.com" --quiet
+
+  # 6b-2. Deploy Activation Poller (detects contractor logins/joins, pings
+  #       #onboarding + operators, advances not_signed_in -> active). PRIVATE —
+  #       invoked by the scheduler via OIDC (compute SA). No Harvest (login not
+  #       exposed by its API), so no Harvest secrets.
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        gcloud functions deploy poll_activations \
+          --region europe-west1 \
+          --runtime python311 \
+          --trigger-http \
+          --no-allow-unauthenticated \
+          --clear-env-vars \
+          --set-secrets SLACK_TOKEN=slack-token:latest,ZOHO_CLIENT_ID=zoho-client-id:latest,ZOHO_CLIENT_SECRET=zoho-client-secret:latest,ZOHO_REFRESH_TOKEN=zoho-refresh-token:latest \
+          --entry-point poll_activations \
+          --set-build-env-vars GOOGLE_FUNCTION_SOURCE=activation_poll.py \
+          --source=Onboarding \
+          --timeout=300s
+        gcloud functions add-invoker-policy-binding poll_activations \
+          --region=europe-west1 \
+          --member="serviceAccount:164865114626-compute@developer.gserviceaccount.com" --quiet
+
+  # 6c. Deploy Onboarding Dashboard (Cloud Run, IAP-protected)
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # firestore_store.py is shared with Onboarding/ — refresh the copy so the
+        # dashboard never deploys against a stale store.
+        cp Onboarding/firestore_store.py Dashboard/firestore_store.py
+        cd Dashboard
+        gcloud run deploy onboarding-dashboard \
+          --region=europe-west1 \
+          --source=. \
+          --allow-unauthenticated \
+          --set-env-vars PROVISION_URL=https://europe-west1-charged-sector-427921-v5.cloudfunctions.net/provision_onboarding,REQUIRE_IAP=1,BACKFILL_URL=https://europe-west1-charged-sector-427921-v5.cloudfunctions.net/backfill_onboarding \
+          --timeout=3600s \
+          --quiet
+
+  # 7. Create Cloud Scheduler jobs
+  - name: 'google/cloud-sdk:slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # Fail loud on any error so a job that can't be created aborts the build
+        # (previously a mid-step failure was masked because it wasn't the last command).
+        set -e
+
+        # Get function URLs. gen1 exposes the URL at httpsTrigger.url; gen2 (Cloud Run,
+        # e.g. sync_user_mappings) exposes it at .url instead — fetch both, prefer the
+        # non-empty one.
+        geturl() {
+          u=$(gcloud functions describe "$$1" --region=europe-west1 --format='value(httpsTrigger.url)')
+          [ -n "$$u" ] || u=$(gcloud functions describe "$$1" --region=europe-west1 --format='value(url)')
+          echo "$$u"
+        }
+        PAYROLL_URL=$(geturl process_payroll_http)
+        REMINDERS_URL=$(geturl send_timesheet_reminders)
+        INVOICING_URL=$(geturl create_invoices_http)
+        MAPPING_SYNC_URL=$(geturl sync_user_mappings)
+        BACKFILL_URL=$(geturl backfill_onboarding)
+        PROVISION_URL=$(geturl provision_onboarding)
+        ACTIVATION_URL=$(geturl poll_activations)
+
+        # Scheduler auth: the org policy blocks public (allUsers) functions, so every
+        # job must invoke its target with an OIDC token. Grant the scheduler SA the
+        # invoker role on each function (idempotent), then pass --oidc-* on each job.
+        SCHED_SA=164865114626-compute@developer.gserviceaccount.com
+        for FN in process_payroll_http send_timesheet_reminders create_invoices_http backfill_onboarding provision_onboarding poll_activations; do
+          gcloud functions add-iam-policy-binding $$FN --region=europe-west1 --member="serviceAccount:$$SCHED_SA" --role="roles/cloudfunctions.invoker" --quiet || true
+        done
+        # sync_user_mappings is gen2 (Cloud Run) — use run.invoker role
+        gcloud run services add-iam-policy-binding sync_user_mappings --region=europe-west1 --member="serviceAccount:$$SCHED_SA" --role="roles/run.invoker" --quiet || true
+
+        # Schedule 1: Payroll sync - Every 1st and 16th at 9 AM
+        gcloud scheduler jobs delete payroll-sync --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http payroll-sync \
+          --location=europe-west1 \
+          --schedule="0 9 1,16 * *" \
+          --uri=$$PAYROLL_URL \
+          --http-method=POST \
+          --time-zone="Asia/Tbilisi" \
+          --oidc-service-account-email=$$SCHED_SA \
+          --oidc-token-audience=$$PAYROLL_URL \
+          --description="Sync Harvest timesheets to Deel"
+        
+        # Schedule 2: Timesheet reminders - Every Friday at 10 AM
+        gcloud scheduler jobs delete timesheet-reminders-mid --location=europe-west1 --quiet || true
+        gcloud scheduler jobs delete timesheet-reminders-end --location=europe-west1 --quiet || true
+        gcloud scheduler jobs delete timesheet-reminders-weekly --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http timesheet-reminders-weekly \
+          --location=europe-west1 \
+          --schedule="0 10 * * 5" \
+          --uri=$$REMINDERS_URL \
+          --http-method=POST \
+          --time-zone="Asia/Tbilisi" \
+          --oidc-service-account-email=$$SCHED_SA \
+          --oidc-token-audience=$$REMINDERS_URL \
+          --description="Send weekly timesheet reminders every Friday"
+        
+        # Schedule 3: Invoicing - 1st and 16th at 10 AM
+        gcloud scheduler jobs delete create-invoices --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http create-invoices \
+          --location=europe-west1 \
+          --schedule="0 10 1,16 * *" \
+          --uri=$$INVOICING_URL \
+          --http-method=POST \
+          --time-zone="Asia/Tbilisi" \
+          --oidc-service-account-email=$$SCHED_SA \
+          --oidc-token-audience=$$INVOICING_URL \
+          --description="Create invoices in Harvest"
+        
+        # Schedule 4: Mapping sync - 1 hour before payroll (8 AM on 1st and 16th)
+        gcloud scheduler jobs delete mapping-sync --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http mapping-sync \
+          --location=europe-west1 \
+          --schedule="0 8 1,16 * *" \
+          --uri=$$MAPPING_SYNC_URL \
+          --http-method=POST \
+          --time-zone="Asia/Tbilisi" \
+          --oidc-service-account-email=$$SCHED_SA \
+          --oidc-token-audience=$$MAPPING_SYNC_URL \
+          --description="Sync Harvest users to Deel contracts before payroll"
+
+        # Schedule 5: Onboarding backfill - daily reconcile of Firestore from Deel
+        # (idempotent; keeps lifecycle gate + derived emails in sync as people sign)
+        gcloud scheduler jobs delete onboarding-backfill --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http onboarding-backfill \
+          --location=europe-west1 \
+          --schedule="0 7 * * *" \
+          --uri=$$BACKFILL_URL \
+          --http-method=POST \
+          --time-zone="Asia/Tbilisi" \
+          --oidc-service-account-email=$$SCHED_SA \
+          --oidc-token-audience=$$BACKFILL_URL \
+          --description="Reconcile onboarding Firestore docs from Deel (idempotent)"
+
+        # Schedule 6: Provisioning sweep - retries hires stuck in lifecycle=provisioning
+        # (e.g. seat cap was hit, Zoho was marked done but the invite call failed).
+        # POST with no person_id = sweep everything pending; every step is idempotent.
+        gcloud scheduler jobs delete onboarding-provision-sweep --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http onboarding-provision-sweep \
+          --location=europe-west1 \
+          --schedule="30 7 * * *" \
+          --uri=$$PROVISION_URL \
+          --http-method=POST \
+          --time-zone="Asia/Tbilisi" \
+          --oidc-service-account-email=$$SCHED_SA \
+          --oidc-token-audience=$$PROVISION_URL \
+          --description="Retry pending onboarding provisioning steps (idempotent sweep)"
+
+        # Schedule 7: Activation poll - every 30 min, detect contractor logins
+        # (Zoho) + Slack joins for hires in not_signed_in, ping #onboarding +
+        # operators, and advance them to active. Idempotent; no-op when none pending.
+        gcloud scheduler jobs delete onboarding-activation-poll --location=europe-west1 --quiet || true
+        gcloud scheduler jobs create http onboarding-activation-poll \
+          --location=europe-west1 \
+          --schedule="*/30 * * * *" \
+          --uri=$$ACTIVATION_URL \
+          --http-method=POST \
+          --time-zone="Asia/Tbilisi" \
+          --oidc-service-account-email=$$SCHED_SA \
+          --oidc-token-audience=$$ACTIVATION_URL \
+          --description="Detect onboarding activations (Zoho login + Slack join) and advance to active"
 
 options:
   logging: CLOUD_LOGGING_ONLY
 
-timeout: 1600s
+
+
+
+timeout: 1800s
